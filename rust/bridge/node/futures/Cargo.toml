@@ -8,7 +8,7 @@ name = "signal-neon-futures"
 version = "0.1.0"
 authors = ["Signal Messenger LLC"]
 license = "AGPL-3.0-only"
-edition = "2018"
+edition = "2021"
 
 [[test]]
 name = "signal-neon-futures-tests"
@@ -21,8 +21,8 @@ path = "benches/node.rs"
 harness = false
 
 [dependencies]
-neon = { version = "0.10.0", default-features = false, features = ["napi-4", "try-catch-api", "channel-api", "promise-api"] }
-futures-util = "0.3.7"
+futures-util = { workspace = true }
+neon = { workspace = true, features = ["napi-4"] }
 
 [dev-dependencies]
 signal-neon-futures-tests = { path = "tests-node-module" }

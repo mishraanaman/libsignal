@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 
-use curve25519_dalek::ristretto::RistrettoPoint;
-use curve25519_dalek::scalar::Scalar;
+use curve25519_dalek_signal::ristretto::RistrettoPoint;
+use curve25519_dalek_signal::scalar::Scalar;
 use poksho::ShoApi;
 
 pub struct Sho {
@@ -42,5 +42,11 @@ impl Sho {
         let mut scalar_bytes = [0u8; 64];
         scalar_bytes.copy_from_slice(&self.internal_sho.squeeze_and_ratchet(64)[..]);
         Scalar::from_bytes_mod_order_wide(&scalar_bytes)
+    }
+}
+
+impl AsMut<poksho::ShoHmacSha256> for Sho {
+    fn as_mut(&mut self) -> &mut poksho::ShoHmacSha256 {
+        &mut self.internal_sho
     }
 }

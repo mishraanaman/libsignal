@@ -8,19 +8,19 @@ use std::error::Error;
 use std::string::ToString;
 use std::time::SystemTime;
 
-use boring::error::ErrorStack;
-use boring::hash::MessageDigest;
-use boring::nid::Nid;
-use boring::rsa::Padding;
-use boring::sign::Verifier;
-use boring::x509::crl::X509CRL;
-use boring::x509::X509;
+use boring_signal::error::ErrorStack;
+use boring_signal::hash::MessageDigest;
+use boring_signal::nid::Nid;
+use boring_signal::rsa::Padding;
+use boring_signal::sign::Verifier;
+use boring_signal::x509::crl::X509CRL;
+use boring_signal::x509::X509;
 use lazy_static::lazy_static;
 
+use crate::cert_chain::CertChain;
 use crate::dcap;
-use crate::dcap::cert_chain::CertChain;
-use crate::dcap::Expireable;
 use crate::error::ContextError;
+use crate::expireable::Expireable;
 
 const IAS_ROOT_CERT_DER: &[u8] = include_bytes!("../res/ias-root.cer");
 // Available from https://trustedservices.intel.com/content/CRL/SGX/AttestationReportSigningCA.crl
@@ -84,7 +84,7 @@ pub fn verify_signature(
 }
 
 impl CertChain {
-    const COMMON_NAME: &str = "Intel SGX Attestation Report Signing";
+    const COMMON_NAME: &'static str = "Intel SGX Attestation Report Signing";
     const ORGANIZATION_NAME: &'static str = "Intel Corporation";
     const LOCALITY_NAME: &'static str = "Santa Clara";
     const STATE_NAME: &'static str = "CA";
@@ -134,17 +134,16 @@ impl CertChain {
 
 #[cfg(test)]
 mod test {
-    use boring::base64::decode_block;
-    use chrono::DateTime;
     use std::time::Duration;
 
-    use crate::util::testio::read_test_file;
+    use boring_signal::base64::decode_block;
+    use chrono::DateTime;
 
     use super::*;
 
     #[test]
     fn happy_path() {
-        verify_signature(&GOOD_PEM, &GOOD_MESSAGE, &GOOD_SIGNATURE, SystemTime::now()).unwrap();
+        verify_signature(GOOD_PEM, &GOOD_MESSAGE, &GOOD_SIGNATURE, SystemTime::now()).unwrap();
     }
 
     #[test]
@@ -152,7 +151,7 @@ mod test {
         let future_time = DateTime::parse_from_rfc3339("2038-01-19T03:14:06Z").unwrap();
         let time: SystemTime =
             SystemTime::UNIX_EPOCH + Duration::from_millis(future_time.timestamp_millis() as u64);
-        verify_signature(&GOOD_PEM, &GOOD_MESSAGE, &GOOD_SIGNATURE, time)
+        verify_signature(GOOD_PEM, &GOOD_MESSAGE, &GOOD_SIGNATURE, time)
             .expect_err("CRL has expired");
     }
 
@@ -160,7 +159,7 @@ mod test {
     fn bad_signature_test() {
         let signature = corrupt(GOOD_SIGNATURE.clone());
 
-        verify_signature(&GOOD_PEM, &GOOD_MESSAGE, &signature, SystemTime::now())
+        verify_signature(GOOD_PEM, &GOOD_MESSAGE, &signature, SystemTime::now())
             .expect_err("signature does not match");
     }
 
@@ -168,7 +167,7 @@ mod test {
     fn bad_data_test() {
         let body = corrupt(GOOD_MESSAGE.clone());
 
-        verify_signature(&GOOD_PEM, &body, &GOOD_SIGNATURE, SystemTime::now())
+        verify_signature(GOOD_PEM, &body, &GOOD_SIGNATURE, SystemTime::now())
             .expect_err("signature does not match");
     }
 
@@ -183,12 +182,12 @@ mod test {
         decode_block(string.as_str()).unwrap()
     }
 
+    const GOOD_PEM: &[u8] = include_bytes!("../tests/data/ias-sig-cert.pem");
     lazy_static! {
-        static ref GOOD_PEM: Vec<u8> = read_test_file("tests/data/ias-sig-cert.pem");
         static ref GOOD_SIGNATURE: Vec<u8> =
             base64_to_bytes("Hj4zz2gLX+g1T4avpcpXxmBqI5bpKKLOy4HLCTO0PwKcV+Q3fhDJVuVy0+SEgzC1TlmARKyH/DVynWu3pA9FA+4BvZxb7nLbaMG4PXdYu56sHDCzFVPsm9TPgqsVu5PbVXatZQ0oVxMkzKtPae3fy/ootXkG+4ahOU6Hwqa0Uy6+HYzL2CJZRJjHV6/iZjgTLjYsQqS0mZiaUuFoqn8RRb8/f7/9SujDSLa8dmKBqaZCtZpeHh4posLWjOhTJx07FhBRh5EV01gXFfys56h2NTc7MpmYbzt2onfH/3lDM8DfdNUJl0TfikzJyVdLWXi0MyAS2nrRhHFwVp365FYEJg==");
         static ref GOOD_MESSAGE: Vec<u8> = base64_to_bytes(
-            std::str::from_utf8(&read_test_file("tests/data/ias-valid-message.txt"))
+            std::str::from_utf8(include_bytes!("../tests/data/ias-valid-message.txt"))
                 .expect("Invalid UTF-8")
         );
 

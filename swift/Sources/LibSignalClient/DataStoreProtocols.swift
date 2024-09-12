@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 
-import SignalFfi
 import Foundation
+import SignalFfi
 
 public enum Direction {
     case sending
@@ -33,6 +33,12 @@ public protocol PreKeyStore: AnyObject {
 public protocol SignedPreKeyStore: AnyObject {
     func loadSignedPreKey(id: UInt32, context: StoreContext) throws -> SignedPreKeyRecord
     func storeSignedPreKey(_ record: SignedPreKeyRecord, id: UInt32, context: StoreContext) throws
+}
+
+public protocol KyberPreKeyStore: AnyObject {
+    func loadKyberPreKey(id: UInt32, context: StoreContext) throws -> KyberPreKeyRecord
+    func storeKyberPreKey(_ record: KyberPreKeyRecord, id: UInt32, context: StoreContext) throws
+    func markKyberPreKeyUsed(id: UInt32, context: StoreContext) throws
 }
 
 public protocol SessionStore: AnyObject {

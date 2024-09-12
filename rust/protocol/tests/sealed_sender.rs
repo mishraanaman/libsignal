@@ -4,12 +4,12 @@
 //
 
 mod support;
-use support::*;
+use std::time::SystemTime;
 
 use futures_util::FutureExt;
 use libsignal_protocol::*;
 use rand::rngs::OsRng;
-use std::convert::TryFrom;
+use support::*;
 use uuid::Uuid;
 
 #[test]
@@ -89,7 +89,7 @@ fn test_sender_cert() -> Result<(), SignalProtocolError> {
         ServerCertificate::new(1, server_key.public_key, &trust_root.private_key, &mut rng)?;
 
     let device_id: DeviceId = 42.into();
-    let expires = 1605722925;
+    let expires = Timestamp::from_epoch_millis(1605722925);
 
     let sender_cert = SenderCertificate::new(
         "9d0652a3-dcc3-4d11-975f-74d61598733f".to_string(),
@@ -103,7 +103,7 @@ fn test_sender_cert() -> Result<(), SignalProtocolError> {
     )?;
 
     assert!(sender_cert.validate(&trust_root.public_key, expires)?);
-    assert!(!sender_cert.validate(&trust_root.public_key, expires + 1)?); // expired
+    assert!(!sender_cert.validate(&trust_root.public_key, expires.add_millis(1))?); // expired
 
     let mut sender_cert_data = sender_cert.serialized()?.to_vec();
     let sender_cert_bits = sender_cert_data.len() * 8;
@@ -151,7 +151,7 @@ fn test_sealed_sender() -> Result<(), SignalProtocolError> {
         let mut alice_store = support::test_in_memory_protocol_store()?;
         let mut bob_store = support::test_in_memory_protocol_store()?;
 
-        let alice_pubkey = *alice_store.get_identity_key_pair(None).await?.public_key();
+        let alice_pubkey = *alice_store.get_identity_key_pair().await?.public_key();
 
         let bob_pre_key_bundle = create_pre_key_bundle(&mut bob_store, &mut rng).await?;
 
@@ -160,8 +160,8 @@ fn test_sealed_sender() -> Result<(), SignalProtocolError> {
             &mut alice_store.session_store,
             &mut alice_store.identity_store,
             &bob_pre_key_bundle,
+            SystemTime::now(),
             &mut rng,
-            None,
         )
         .await?;
 
@@ -171,7 +171,7 @@ fn test_sealed_sender() -> Result<(), SignalProtocolError> {
         let server_cert =
             ServerCertificate::new(1, server_key.public_key, &trust_root.private_key, &mut rng)?;
 
-        let expires = 1605722925;
+        let expires = Timestamp::from_epoch_millis(1605722925);
 
         let sender_cert = SenderCertificate::new(
             alice_uuid.clone(),
@@ -191,7 +191,7 @@ fn test_sealed_sender() -> Result<(), SignalProtocolError> {
             &alice_ptext,
             &mut alice_store.session_store,
             &mut alice_store.identity_store,
-            None,
+            SystemTime::now(),
             &mut rng,
         )
         .await?;
@@ -199,15 +199,15 @@ fn test_sealed_sender() -> Result<(), SignalProtocolError> {
         let bob_ptext = sealed_sender_decrypt(
             &alice_ctext,
             &trust_root.public_key,
-            expires - 1,
+            expires.sub_millis(1),
             Some(bob_e164.clone()),
             bob_uuid.clone(),
             bob_device_id,
             &mut bob_store.identity_store,
             &mut bob_store.session_store,
             &mut bob_store.pre_key_store,
-            &mut bob_store.signed_pre_key_store,
-            None,
+            &bob_store.signed_pre_key_store,
+            &mut bob_store.kyber_pre_key_store,
         )
         .await?;
 
@@ -224,7 +224,7 @@ fn test_sealed_sender() -> Result<(), SignalProtocolError> {
             &alice_ptext,
             &mut alice_store.session_store,
             &mut alice_store.identity_store,
-            None,
+            SystemTime::now(),
             &mut rng,
         )
         .await?;
@@ -232,15 +232,15 @@ fn test_sealed_sender() -> Result<(), SignalProtocolError> {
         let bob_ptext = sealed_sender_decrypt(
             &alice_ctext,
             &trust_root.public_key,
-            expires + 11,
+            expires.add_millis(11),
             Some(bob_e164.clone()),
             bob_uuid.clone(),
             bob_device_id,
             &mut bob_store.identity_store,
             &mut bob_store.session_store,
             &mut bob_store.pre_key_store,
-            &mut bob_store.signed_pre_key_store,
-            None,
+            &bob_store.signed_pre_key_store,
+            &mut bob_store.kyber_pre_key_store,
         )
         .await;
 
@@ -262,7 +262,7 @@ fn test_sealed_sender() -> Result<(), SignalProtocolError> {
             &alice_ptext,
             &mut alice_store.session_store,
             &mut alice_store.identity_store,
-            None,
+            SystemTime::now(),
             &mut rng,
         )
         .await?;
@@ -272,15 +272,15 @@ fn test_sealed_sender() -> Result<(), SignalProtocolError> {
         let bob_ptext = sealed_sender_decrypt(
             &alice_ctext,
             &wrong_trust_root.public_key,
-            expires - 1,
+            expires.sub_millis(1),
             Some(bob_e164.clone()),
             bob_uuid.clone(),
             bob_device_id,
             &mut bob_store.identity_store,
             &mut bob_store.session_store,
             &mut bob_store.pre_key_store,
-            &mut bob_store.signed_pre_key_store,
-            None,
+            &bob_store.signed_pre_key_store,
+            &mut bob_store.kyber_pre_key_store,
         )
         .await;
 
@@ -322,7 +322,7 @@ fn test_sender_key_in_sealed_sender() -> Result<(), SignalProtocolError> {
         let mut alice_store = support::test_in_memory_protocol_store()?;
         let mut bob_store = support::test_in_memory_protocol_store()?;
 
-        let alice_pubkey = *alice_store.get_identity_key_pair(None).await?.public_key();
+        let alice_pubkey = *alice_store.get_identity_key_pair().await?.public_key();
 
         let bob_pre_key_bundle = create_pre_key_bundle(&mut bob_store, &mut rng).await?;
 
@@ -331,8 +331,8 @@ fn test_sender_key_in_sealed_sender() -> Result<(), SignalProtocolError> {
             &mut alice_store.session_store,
             &mut alice_store.identity_store,
             &bob_pre_key_bundle,
+            SystemTime::now(),
             &mut rng,
-            None,
         )
         .await?;
 
@@ -342,7 +342,7 @@ fn test_sender_key_in_sealed_sender() -> Result<(), SignalProtocolError> {
         let server_cert =
             ServerCertificate::new(1, server_key.public_key, &trust_root.private_key, &mut rng)?;
 
-        let expires = 1605722925;
+        let expires = Timestamp::from_epoch_millis(1605722925);
 
         let sender_cert = SenderCertificate::new(
             alice_uuid.clone(),
@@ -360,7 +360,6 @@ fn test_sender_key_in_sealed_sender() -> Result<(), SignalProtocolError> {
             distribution_id,
             &mut alice_store,
             &mut rng,
-            None,
         )
         .await?;
 
@@ -368,7 +367,6 @@ fn test_sender_key_in_sealed_sender() -> Result<(), SignalProtocolError> {
             &alice_uuid_address,
             &distribution_message,
             &mut bob_store,
-            None,
         )
         .await?;
 
@@ -378,7 +376,6 @@ fn test_sender_key_in_sealed_sender() -> Result<(), SignalProtocolError> {
             distribution_id,
             "swim camp".as_bytes(),
             &mut rng,
-            None,
         )
         .await?;
         let alice_usmc = UnidentifiedSenderMessageContent::new(
@@ -392,28 +389,21 @@ fn test_sender_key_in_sealed_sender() -> Result<(), SignalProtocolError> {
         let alice_ctext = sealed_sender_encrypt_from_usmc(
             &bob_uuid_address,
             &alice_usmc,
-            &mut alice_store.identity_store,
-            None,
+            &alice_store.identity_store,
             &mut rng,
         )
         .await?;
 
         let bob_usmc =
-            sealed_sender_decrypt_to_usmc(&alice_ctext, &mut bob_store.identity_store, None)
-                .await?;
+            sealed_sender_decrypt_to_usmc(&alice_ctext, &bob_store.identity_store).await?;
 
         assert!(matches!(
             bob_usmc.msg_type()?,
             CiphertextMessageType::SenderKey,
         ));
 
-        let bob_plaintext = group_decrypt(
-            bob_usmc.contents()?,
-            &mut bob_store,
-            &alice_uuid_address,
-            None,
-        )
-        .await?;
+        let bob_plaintext =
+            group_decrypt(bob_usmc.contents()?, &mut bob_store, &alice_uuid_address).await?;
 
         assert_eq!(
             String::from_utf8(bob_plaintext).expect("valid UTF-8"),
@@ -445,7 +435,7 @@ fn test_sealed_sender_multi_recipient() -> Result<(), SignalProtocolError> {
         let mut alice_store = support::test_in_memory_protocol_store()?;
         let mut bob_store = support::test_in_memory_protocol_store()?;
 
-        let alice_pubkey = *alice_store.get_identity_key_pair(None).await?.public_key();
+        let alice_pubkey = *alice_store.get_identity_key_pair().await?.public_key();
 
         let bob_pre_key_bundle = create_pre_key_bundle(&mut bob_store, &mut rng).await?;
 
@@ -454,8 +444,8 @@ fn test_sealed_sender_multi_recipient() -> Result<(), SignalProtocolError> {
             &mut alice_store.session_store,
             &mut alice_store.identity_store,
             &bob_pre_key_bundle,
+            SystemTime::now(),
             &mut rng,
-            None,
         )
         .await?;
 
@@ -465,7 +455,7 @@ fn test_sealed_sender_multi_recipient() -> Result<(), SignalProtocolError> {
         let server_cert =
             ServerCertificate::new(1, server_key.public_key, &trust_root.private_key, &mut rng)?;
 
-        let expires = 1605722925;
+        let expires = Timestamp::from_epoch_millis(1605722925);
 
         let sender_cert = SenderCertificate::new(
             alice_uuid.clone(),
@@ -484,7 +474,7 @@ fn test_sealed_sender_multi_recipient() -> Result<(), SignalProtocolError> {
             &bob_uuid_address,
             &mut alice_store.session_store,
             &mut alice_store.identity_store,
-            None,
+            SystemTime::now(),
         )
         .await?;
 
@@ -502,28 +492,29 @@ fn test_sealed_sender_multi_recipient() -> Result<(), SignalProtocolError> {
             &alice_store
                 .session_store
                 .load_existing_sessions(&recipients)?,
+            [],
             &alice_usmc,
-            &mut alice_store.identity_store,
-            None,
+            &alice_store.identity_store,
             &mut rng,
         )
         .await?;
 
-        let [bob_ctext] = <[_; 1]>::try_from(sealed_sender_multi_recipient_fan_out(&alice_ctext)?)
-            .expect("only one recipient");
+        let (recipient_addr, bob_ctext) = extract_single_ssv2_received_message(&alice_ctext);
+        assert_eq!(recipient_addr.service_id_string(), bob_uuid);
+        assert_eq!(bob_ctext[0], 0x22); // Use the original SSv2 version byte.
 
         let bob_ptext = sealed_sender_decrypt(
             &bob_ctext,
             &trust_root.public_key,
-            expires - 1,
+            expires.sub_millis(1),
             Some(bob_e164.clone()),
             bob_uuid.clone(),
             bob_device_id,
             &mut bob_store.identity_store,
             &mut bob_store.session_store,
             &mut bob_store.pre_key_store,
-            &mut bob_store.signed_pre_key_store,
-            None,
+            &bob_store.signed_pre_key_store,
+            &mut bob_store.kyber_pre_key_store,
         )
         .await?;
 
@@ -532,13 +523,25 @@ fn test_sealed_sender_multi_recipient() -> Result<(), SignalProtocolError> {
         assert_eq!(bob_ptext.sender_e164, Some(alice_e164));
         assert_eq!(bob_ptext.device_id, alice_device_id);
 
+        // Check the original SSv2 upload format too.
+        // libsignal doesn't support encoding it, so we're going to hand-edit.
+        let mut alice_ctext_old_format = alice_ctext;
+        alice_ctext_old_format[0] = 0x22; // Update the version.
+        assert_eq!(alice_ctext_old_format.remove(2), 0); // Check that we have the right byte.
+
+        let (recipient_addr_old_format, bob_ctext_old_format) =
+            extract_single_ssv2_received_message(&alice_ctext_old_format);
+        assert_eq!(recipient_addr_old_format, recipient_addr);
+        assert_eq!(bob_ctext_old_format[0], alice_ctext_old_format[0]);
+        assert_eq!(&bob_ctext_old_format[1..], &bob_ctext[1..]);
+
         // Now test but with an expired cert:
         let alice_message = message_encrypt(
             &alice_ptext,
             &bob_uuid_address,
             &mut alice_store.session_store,
             &mut alice_store.identity_store,
-            None,
+            SystemTime::now(),
         )
         .await?;
 
@@ -556,28 +559,27 @@ fn test_sealed_sender_multi_recipient() -> Result<(), SignalProtocolError> {
             &alice_store
                 .session_store
                 .load_existing_sessions(&recipients)?,
+            [],
             &alice_usmc,
-            &mut alice_store.identity_store,
-            None,
+            &alice_store.identity_store,
             &mut rng,
         )
         .await?;
 
-        let [bob_ctext] = <[_; 1]>::try_from(sealed_sender_multi_recipient_fan_out(&alice_ctext)?)
-            .expect("only one recipient");
+        let (_, bob_ctext) = extract_single_ssv2_received_message(&alice_ctext);
 
         let bob_ptext = sealed_sender_decrypt(
             &bob_ctext,
             &trust_root.public_key,
-            expires + 11,
+            expires.add_millis(11),
             Some(bob_e164.clone()),
             bob_uuid.clone(),
             bob_device_id,
             &mut bob_store.identity_store,
             &mut bob_store.session_store,
             &mut bob_store.pre_key_store,
-            &mut bob_store.signed_pre_key_store,
-            None,
+            &bob_store.signed_pre_key_store,
+            &mut bob_store.kyber_pre_key_store,
         )
         .await;
 
@@ -598,7 +600,7 @@ fn test_sealed_sender_multi_recipient() -> Result<(), SignalProtocolError> {
             &bob_uuid_address,
             &mut alice_store.session_store,
             &mut alice_store.identity_store,
-            None,
+            SystemTime::now(),
         )
         .await?;
 
@@ -616,30 +618,29 @@ fn test_sealed_sender_multi_recipient() -> Result<(), SignalProtocolError> {
             &alice_store
                 .session_store
                 .load_existing_sessions(&recipients)?,
+            [],
             &alice_usmc,
-            &mut alice_store.identity_store,
-            None,
+            &alice_store.identity_store,
             &mut rng,
         )
         .await?;
 
         let wrong_trust_root = KeyPair::generate(&mut rng);
 
-        let [bob_ctext] = <[_; 1]>::try_from(sealed_sender_multi_recipient_fan_out(&alice_ctext)?)
-            .expect("only one recipient");
+        let (_, bob_ctext) = extract_single_ssv2_received_message(&alice_ctext);
 
         let bob_ptext = sealed_sender_decrypt(
             &bob_ctext,
             &wrong_trust_root.public_key,
-            expires - 1,
+            expires.sub_millis(1),
             Some(bob_e164.clone()),
             bob_uuid.clone(),
             bob_device_id,
             &mut bob_store.identity_store,
             &mut bob_store.session_store,
             &mut bob_store.pre_key_store,
-            &mut bob_store.signed_pre_key_store,
-            None,
+            &bob_store.signed_pre_key_store,
+            &mut bob_store.kyber_pre_key_store,
         )
         .await;
 
@@ -678,7 +679,7 @@ fn test_sealed_sender_multi_recipient_encrypt_with_archived_session(
         let mut alice_store = support::test_in_memory_protocol_store()?;
         let mut bob_store = support::test_in_memory_protocol_store()?;
 
-        let alice_pubkey = *alice_store.get_identity_key_pair(None).await?.public_key();
+        let alice_pubkey = *alice_store.get_identity_key_pair().await?.public_key();
 
         let bob_pre_key_bundle = create_pre_key_bundle(&mut bob_store, &mut rng).await?;
 
@@ -687,8 +688,8 @@ fn test_sealed_sender_multi_recipient_encrypt_with_archived_session(
             &mut alice_store.session_store,
             &mut alice_store.identity_store,
             &bob_pre_key_bundle,
+            SystemTime::now(),
             &mut rng,
-            None,
         )
         .await?;
 
@@ -698,7 +699,7 @@ fn test_sealed_sender_multi_recipient_encrypt_with_archived_session(
         let server_cert =
             ServerCertificate::new(1, server_key.public_key, &trust_root.private_key, &mut rng)?;
 
-        let expires = 1605722925;
+        let expires = Timestamp::from_epoch_millis(1605722925);
 
         let sender_cert = SenderCertificate::new(
             alice_uuid.clone(),
@@ -717,7 +718,7 @@ fn test_sealed_sender_multi_recipient_encrypt_with_archived_session(
             &bob_uuid_address,
             &mut alice_store.session_store,
             &mut alice_store.identity_store,
-            None,
+            SystemTime::now(),
         )
         .await?;
 
@@ -732,16 +733,16 @@ fn test_sealed_sender_multi_recipient_encrypt_with_archived_session(
         let recipients = [&bob_uuid_address];
         let mut session = alice_store
             .session_store
-            .load_session(&bob_uuid_address, None)
+            .load_session(&bob_uuid_address)
             .await?
             .expect("present");
         session.archive_current_state()?;
         match sealed_sender_multi_recipient_encrypt(
             &recipients,
             &[&session],
+            [],
             &alice_usmc,
-            &mut alice_store.identity_store,
-            None,
+            &alice_store.identity_store,
             &mut rng,
         )
         .await
@@ -784,7 +785,7 @@ fn test_sealed_sender_multi_recipient_encrypt_with_bad_registration_id(
         let mut bob_store =
             InMemSignalProtocolStore::new(IdentityKeyPair::generate(&mut rng), 0x4000)?;
 
-        let alice_pubkey = *alice_store.get_identity_key_pair(None).await?.public_key();
+        let alice_pubkey = *alice_store.get_identity_key_pair().await?.public_key();
 
         let bob_pre_key_bundle = create_pre_key_bundle(&mut bob_store, &mut rng).await?;
 
@@ -793,8 +794,8 @@ fn test_sealed_sender_multi_recipient_encrypt_with_bad_registration_id(
             &mut alice_store.session_store,
             &mut alice_store.identity_store,
             &bob_pre_key_bundle,
+            SystemTime::now(),
             &mut rng,
-            None,
         )
         .await?;
 
@@ -804,7 +805,7 @@ fn test_sealed_sender_multi_recipient_encrypt_with_bad_registration_id(
         let server_cert =
             ServerCertificate::new(1, server_key.public_key, &trust_root.private_key, &mut rng)?;
 
-        let expires = 1605722925;
+        let expires = Timestamp::from_epoch_millis(1605722925);
 
         let sender_cert = SenderCertificate::new(
             alice_uuid.clone(),
@@ -823,7 +824,7 @@ fn test_sealed_sender_multi_recipient_encrypt_with_bad_registration_id(
             &bob_uuid_address,
             &mut alice_store.session_store,
             &mut alice_store.identity_store,
-            None,
+            SystemTime::now(),
         )
         .await?;
 
@@ -841,9 +842,9 @@ fn test_sealed_sender_multi_recipient_encrypt_with_bad_registration_id(
             &alice_store
                 .session_store
                 .load_existing_sessions(&recipients)?,
+            [],
             &alice_usmc,
-            &mut alice_store.identity_store,
-            None,
+            &alice_store.identity_store,
             &mut rng,
         )
         .await
@@ -880,7 +881,7 @@ fn test_decryption_error_in_sealed_sender() -> Result<(), SignalProtocolError> {
         let mut alice_store = support::test_in_memory_protocol_store()?;
         let mut bob_store = support::test_in_memory_protocol_store()?;
 
-        let alice_pubkey = *alice_store.get_identity_key_pair(None).await?.public_key();
+        let alice_pubkey = *alice_store.get_identity_key_pair().await?.public_key();
 
         let alice_pre_key_bundle = create_pre_key_bundle(&mut alice_store, &mut rng).await?;
 
@@ -889,8 +890,8 @@ fn test_decryption_error_in_sealed_sender() -> Result<(), SignalProtocolError> {
             &mut bob_store.session_store,
             &mut bob_store.identity_store,
             &alice_pre_key_bundle,
+            SystemTime::now(),
             &mut rng,
-            None,
         )
         .await?;
 
@@ -901,7 +902,7 @@ fn test_decryption_error_in_sealed_sender() -> Result<(), SignalProtocolError> {
             &alice_uuid_address,
             &mut bob_store.session_store,
             &mut bob_store.identity_store,
-            None,
+            SystemTime::now(),
         )
         .await?;
 
@@ -911,9 +912,9 @@ fn test_decryption_error_in_sealed_sender() -> Result<(), SignalProtocolError> {
             &mut alice_store.session_store,
             &mut alice_store.identity_store,
             &mut alice_store.pre_key_store,
-            &mut alice_store.signed_pre_key_store,
+            &alice_store.signed_pre_key_store,
+            &mut alice_store.kyber_pre_key_store,
             &mut rng,
-            None,
         )
         .await?;
 
@@ -924,7 +925,7 @@ fn test_decryption_error_in_sealed_sender() -> Result<(), SignalProtocolError> {
             &alice_uuid_address,
             &mut bob_store.session_store,
             &mut bob_store.identity_store,
-            None,
+            SystemTime::now(),
         )
         .await?;
 
@@ -942,7 +943,7 @@ fn test_decryption_error_in_sealed_sender() -> Result<(), SignalProtocolError> {
         let server_cert =
             ServerCertificate::new(1, server_key.public_key, &trust_root.private_key, &mut rng)?;
 
-        let expires = 1605722925;
+        let expires = Timestamp::from_epoch_millis(1605722925);
 
         let sender_cert = SenderCertificate::new(
             alice_uuid.clone(),
@@ -955,10 +956,11 @@ fn test_decryption_error_in_sealed_sender() -> Result<(), SignalProtocolError> {
             &mut rng,
         )?;
 
+        const ORIGINAL_TIMESTAMP: Timestamp = Timestamp::from_epoch_millis(408);
         let error_message = DecryptionErrorMessage::for_original(
             bob_message.serialize(),
             bob_message.message_type(),
-            408,
+            ORIGINAL_TIMESTAMP,
             5,
         )?;
         let error_message_content = PlaintextContent::from(error_message);
@@ -973,15 +975,13 @@ fn test_decryption_error_in_sealed_sender() -> Result<(), SignalProtocolError> {
         let alice_ctext = sealed_sender_encrypt_from_usmc(
             &bob_uuid_address,
             &error_message_usmc,
-            &mut alice_store.identity_store,
-            None,
+            &alice_store.identity_store,
             &mut rng,
         )
         .await?;
 
         let bob_usmc =
-            sealed_sender_decrypt_to_usmc(&alice_ctext, &mut bob_store.identity_store, None)
-                .await?;
+            sealed_sender_decrypt_to_usmc(&alice_ctext, &bob_store.identity_store).await?;
 
         assert!(matches!(
             bob_usmc.msg_type()?,
@@ -994,8 +994,108 @@ fn test_decryption_error_in_sealed_sender() -> Result<(), SignalProtocolError> {
                 .expect("present");
 
         assert_eq!(bob_error_message.ratchet_key(), Some(original_ratchet_key));
-        assert_eq!(bob_error_message.timestamp(), 408);
+        assert_eq!(bob_error_message.timestamp(), ORIGINAL_TIMESTAMP);
         assert_eq!(bob_error_message.device_id(), 5);
+
+        Ok(())
+    }
+    .now_or_never()
+    .expect("sync")
+}
+
+#[test]
+fn parse_empty_multi_recipient_sealed_sender() {
+    assert!(SealedSenderV2SentMessage::parse(&[]).is_err());
+}
+
+#[test]
+fn test_sealed_sender_multi_recipient_redundant_empty_devices() -> Result<(), SignalProtocolError> {
+    async {
+        let mut csprng = OsRng;
+
+        let alice_device_id: DeviceId = 23.into();
+        let bob_device_id: DeviceId = 42.into();
+
+        let alice_uuid = "9d0652a3-dcc3-4d11-975f-74d61598733f".to_string();
+        let bob_uuid = "796abedb-ca4e-4f18-8803-1fde5b921f9f".to_string();
+
+        let bob_uuid_address = ProtocolAddress::new(bob_uuid.clone(), bob_device_id);
+
+        let mut alice_store = support::test_in_memory_protocol_store()?;
+        let mut bob_store = support::test_in_memory_protocol_store()?;
+
+        let alice_pubkey = *alice_store.get_identity_key_pair().await?.public_key();
+
+        let bob_pre_key_bundle = create_pre_key_bundle(&mut bob_store, &mut csprng).await?;
+
+        process_prekey_bundle(
+            &bob_uuid_address,
+            &mut alice_store.session_store,
+            &mut alice_store.identity_store,
+            &bob_pre_key_bundle,
+            SystemTime::now(),
+            &mut csprng,
+        )
+        .await?;
+
+        let trust_root = KeyPair::generate(&mut csprng);
+        let server_key = KeyPair::generate(&mut csprng);
+
+        let server_cert = ServerCertificate::new(
+            1,
+            server_key.public_key,
+            &trust_root.private_key,
+            &mut csprng,
+        )?;
+
+        let expires = Timestamp::from_epoch_millis(1605722925);
+
+        let sender_cert = SenderCertificate::new(
+            alice_uuid.clone(),
+            None,
+            alice_pubkey,
+            alice_device_id,
+            expires,
+            server_cert,
+            &server_key.private_key,
+            &mut csprng,
+        )?;
+
+        let alice_usmc = UnidentifiedSenderMessageContent::new(
+            CiphertextMessageType::SenderKey,
+            sender_cert.clone(),
+            vec![],
+            ContentHint::Implicit,
+            Some([42].to_vec()),
+        )?;
+
+        let recipients = [&bob_uuid_address];
+        let recipient_excluded_and_included = sealed_sender_multi_recipient_encrypt(
+            &recipients,
+            &alice_store
+                .session_store
+                .load_existing_sessions(&recipients)?,
+            [ServiceId::parse_from_service_id_string(&bob_uuid).unwrap()],
+            &alice_usmc,
+            &alice_store.identity_store,
+            &mut csprng,
+        )
+        .await?;
+        assert!(SealedSenderV2SentMessage::parse(&recipient_excluded_and_included).is_err());
+
+        let recipient_excluded_twice = sealed_sender_multi_recipient_encrypt(
+            &[],
+            &[],
+            [
+                ServiceId::parse_from_service_id_string(&bob_uuid).unwrap(),
+                ServiceId::parse_from_service_id_string(&bob_uuid).unwrap(),
+            ],
+            &alice_usmc,
+            &alice_store.identity_store,
+            &mut csprng,
+        )
+        .await?;
+        assert!(SealedSenderV2SentMessage::parse(&recipient_excluded_twice).is_err());
 
         Ok(())
     }

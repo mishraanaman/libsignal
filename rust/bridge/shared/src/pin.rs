@@ -3,13 +3,15 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 
+use ::attest::svr2::lookup_groupid;
+use ::signal_pin::{local_pin_hash, verify_local_pin_hash, PinHash, Result};
 use libsignal_bridge_macros::*;
+use signal_pin::Error;
 
 use crate::support::*;
 use crate::*;
-use ::signal_pin::{local_pin_hash, verify_local_pin_hash, PinHash, Result};
 
-bridge_handle!(PinHash, node = false);
+bridge_handle_fns!(PinHash, node = false);
 
 #[bridge_fn(node = false)]
 pub fn PinHash_EncryptionKey(ph: &PinHash) -> [u8; 32] {
@@ -27,8 +29,18 @@ pub fn PinHash_FromSalt(pin: &[u8], salt: &[u8; 32]) -> Result<PinHash> {
 }
 
 #[bridge_fn(node = false)]
-pub fn PinHash_FromUsernameGroupId(pin: &[u8], username: &[u8], groupid: u64) -> Result<PinHash> {
-    PinHash::create(pin, &PinHash::make_salt(username, groupid))
+pub fn PinHash_FromUsernameMrenclave(
+    pin: &[u8],
+    username: String,
+    mrenclave: &[u8],
+) -> Result<PinHash> {
+    PinHash::create(
+        pin,
+        &PinHash::make_salt(
+            &username,
+            lookup_groupid(mrenclave).ok_or(Error::MrenclaveLookupError)?,
+        ),
+    )
 }
 
 #[bridge_fn(node = false)]

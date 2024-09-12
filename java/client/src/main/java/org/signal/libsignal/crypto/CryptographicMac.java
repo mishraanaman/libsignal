@@ -5,6 +5,8 @@
 
 package org.signal.libsignal.crypto;
 
+import static org.signal.libsignal.internal.FilterExceptions.filterExceptions;
+
 import org.signal.libsignal.internal.Native;
 import org.signal.libsignal.internal.NativeHandleGuard;
 
@@ -12,10 +14,11 @@ public class CryptographicMac implements NativeHandleGuard.Owner {
   private final long unsafeHandle;
 
   public CryptographicMac(String algo, byte[] key) {
-    this.unsafeHandle = Native.CryptographicMac_New(algo, key);
+    this.unsafeHandle = filterExceptions(() -> Native.CryptographicMac_New(algo, key));
   }
 
-  @Override @SuppressWarnings("deprecation")
+  @Override
+  @SuppressWarnings("deprecation")
   protected void finalize() {
     Native.CryptographicMac_Destroy(this.unsafeHandle);
   }
@@ -41,5 +44,4 @@ public class CryptographicMac implements NativeHandleGuard.Owner {
       return Native.CryptographicMac_Finalize(guard.nativeHandle());
     }
   }
-
 }

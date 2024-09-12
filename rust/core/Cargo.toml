@@ -1,0 +1,20 @@
+#
+# Copyright (C) 2023 Signal Messenger, LLC.
+# SPDX-License-Identifier: AGPL-3.0-only
+#
+
+[package]
+name = "libsignal-core"
+version = "0.1.0"
+authors = ["Signal Messenger LLC"]
+edition = "2021"
+license = "AGPL-3.0-only"
+
+[dependencies]
+num_enum = { workspace = true }
+uuid = { workspace = true }
+
+[dev-dependencies]
+hex-literal = { workspace = true }
+proptest = { workspace = true }
+rand = { workspace = true }

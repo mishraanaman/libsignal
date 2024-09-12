@@ -3,15 +3,15 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 
-use crate::proto::storage::PreKeyRecordStructure;
-use crate::{KeyPair, PrivateKey, PublicKey, Result, SignalProtocolError};
+use std::fmt;
 
 use prost::Message;
 
-use std::fmt;
+use crate::proto::storage::PreKeyRecordStructure;
+use crate::{KeyPair, PrivateKey, PublicKey, Result, SignalProtocolError};
 
 /// A unique identifier selecting among this client's known pre-keys.
-#[derive(Copy, Clone, Debug, Hash, Eq, PartialEq)]
+#[derive(Copy, Clone, Debug, Hash, Eq, PartialEq, Ord, PartialOrd)]
 pub struct PreKeyId(u32);
 
 impl From<u32> for PreKeyId {

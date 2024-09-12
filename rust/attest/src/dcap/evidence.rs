@@ -5,12 +5,13 @@
 
 //! DCAP quote (Open Enclave "evidence"), ported from Open Enclave headers in v0.17.7.
 
-use sha2::Digest;
 use std::collections::HashMap;
-use std::convert::{TryFrom, TryInto};
+
+use sha2::Digest;
 
 use crate::dcap::sgx_quote::SgxQuote;
 use crate::dcap::{Error, Expireable};
+use crate::endian::UInt64LE;
 use crate::error::Context;
 use crate::util;
 
@@ -55,51 +56,65 @@ pub(crate) struct CustomClaims<'a> {
     data: &'a [u8],
 }
 
+// include/openenclave/attestation/custom_claims.h
+//
+// oe_custom_claims_header_t
+//     uint64_t version;
+//     uint64_t num_claims;
+#[derive(zerocopy::FromBytes, zerocopy::FromZeroes)]
+#[repr(C)]
+#[allow(dead_code)] // incorrectly identified as never constructed
+struct CustomClaimsHeader {
+    custom_claims_version: UInt64LE,
+    num_claims: UInt64LE,
+}
+// oe_custom_claims_entry_t
+//     uint64_t name_size;
+//     uint64_t value_size;
+//     uint8_t name[];
+//       // name_size bytes follow.
+//       // value_size_bytes follow.
+#[derive(zerocopy::FromBytes, zerocopy::FromZeroes)]
+#[repr(C)]
+#[allow(dead_code)] // incorrectly identified as never constructed
+struct CustomClaimsEntryHeader {
+    name_size: UInt64LE,
+    value_size: UInt64LE,
+}
+
 /// Deserializes an `OpenEnclave` custom claims struct (custom_claims.h)
 impl<'a> TryFrom<&'a [u8]> for CustomClaims<'a> {
     type Error = super::Error;
 
     fn try_from(mut bytes: &'a [u8]) -> Result<Self, Self::Error> {
-        if bytes.len() < 16 {
-            return Err(Error::new("underflow"));
-        }
-
         // keep a reference to the original slice for later hashing
         let claims_data = bytes;
 
-        // include/openenclave/attestation/custom_claims.h
+        let CustomClaimsHeader {
+            custom_claims_version,
+            num_claims,
+        } = util::read_from_bytes(&mut bytes).ok_or_else(|| Error::new("underflow"))?;
+        let num_claims = num_claims.get();
 
-        // oe_custom_claims_header_t
-        //     uint64_t version;
-        //     uint64_t num_claims;
-        let custom_claims_version = util::read_u64_le(&mut bytes);
-        if custom_claims_version != OE_CLAIMS_V1 {
+        if custom_claims_version.get() != OE_CLAIMS_V1 {
             return Err(Error::new("unsupported claims version"));
         }
-
-        let num_claims = util::read_u64_le(&mut bytes);
         if num_claims > 256 {
             return Err(Error::new("too many custom claims"));
         }
         let mut claims = HashMap::with_capacity(num_claims as usize);
 
         for _ in 0..num_claims {
-            // oe_custom_claims_entry_t
-            //     uint64_t name_size;
-            //     uint64_t value_size;
-            //     uint8_t name[];
-            //       // name_size bytes follow.
-            //       // value_size_bytes follow.
+            let CustomClaimsEntryHeader {
+                name_size,
+                value_size,
+            } = util::read_from_bytes(&mut bytes).ok_or_else(|| Error::new("underflow"))?;
+            let name_size = name_size.get();
+            let value_size = value_size.get();
 
-            if bytes.len() < 16 {
-                return Err(Error::new("underflow"));
-            }
-
-            let name_size = util::read_u64_le(&mut bytes);
             if name_size > 1024 {
                 return Err(Error::new("custom claim name too long"));
             }
-            let value_size = util::read_u64_le(&mut bytes);
             if value_size > 1024 * 1024 {
                 return Err(Error::new("custom claim value too long"));
             }
@@ -138,21 +153,20 @@ impl CustomClaims<'_> {
 
 #[cfg(test)]
 mod test {
+    use hex_literal::hex;
+
     use super::*;
     use crate::dcap::MREnclave;
-    use crate::util::testio::read_test_file;
-    use hex_literal::hex;
-    use std::convert::TryFrom;
 
     const EXPECTED_MRENCLAVE: MREnclave =
         hex!("337ac97ce088a132daeb1308ea3159f807de4a827e875b2c90ce21bf4751196f");
 
     #[test]
     fn from_bytes() {
-        let data = read_test_file("tests/data/dcap.evidence");
-        let pkey = hex::decode(read_test_file("tests/data/dcap.pubkey")).unwrap();
+        const DATA: &[u8] = include_bytes!("../../tests/data/dcap.evidence");
+        let pkey = hex::decode(include_bytes!("../../tests/data/dcap.pubkey")).unwrap();
 
-        let evidence = Evidence::try_from(data.as_slice()).expect("should parse");
+        let evidence = Evidence::try_from(DATA).expect("should parse");
         assert_eq!(pkey, evidence.claims.map.get("pk").unwrap().as_slice());
         assert_eq!(
             EXPECTED_MRENCLAVE,

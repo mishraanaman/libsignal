@@ -1,19 +1,18 @@
-/**
- * Copyright (C) 2014-2016 Open Whisper Systems
- *
- * Licensed according to the LICENSE file in this repository.
- */
-package org.signal.libsignal.protocol.state.impl;
+//
+// Copyright 2014-2016 Signal Messenger, LLC.
+// SPDX-License-Identifier: AGPL-3.0-only
+//
 
-import org.signal.libsignal.protocol.InvalidKeyIdException;
-import org.signal.libsignal.protocol.InvalidMessageException;
-import org.signal.libsignal.protocol.state.SignedPreKeyRecord;
-import org.signal.libsignal.protocol.state.SignedPreKeyStore;
+package org.signal.libsignal.protocol.state.impl;
 
 import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
+import org.signal.libsignal.protocol.InvalidKeyIdException;
+import org.signal.libsignal.protocol.InvalidMessageException;
+import org.signal.libsignal.protocol.state.SignedPreKeyRecord;
+import org.signal.libsignal.protocol.state.SignedPreKeyStore;
 
 public class InMemorySignedPreKeyStore implements SignedPreKeyStore {
 
@@ -23,7 +22,7 @@ public class InMemorySignedPreKeyStore implements SignedPreKeyStore {
   public SignedPreKeyRecord loadSignedPreKey(int signedPreKeyId) throws InvalidKeyIdException {
     try {
       if (!store.containsKey(signedPreKeyId)) {
-        throw new InvalidKeyIdException("No such signedprekeyrecord! " + signedPreKeyId);
+        throw new InvalidKeyIdException("No such SignedPreKeyRecord! " + signedPreKeyId);
       }
 
       return new SignedPreKeyRecord(store.get(signedPreKeyId));

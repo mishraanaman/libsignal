@@ -8,17 +8,30 @@ import SignalFfi
 public class ProtocolAddress: ClonableHandleOwner {
     public convenience init(name: String, deviceId: UInt32) throws {
         var handle: OpaquePointer?
-        try checkError(signal_address_new(&handle,
-                                          name,
-                                          deviceId))
+        try checkError(signal_address_new(
+            &handle,
+            name,
+            deviceId
+        ))
         self.init(owned: handle!)
     }
 
-    internal override class func cloneNativeHandle(_ newHandle: inout OpaquePointer?, currentHandle: OpaquePointer?) -> SignalFfiErrorRef? {
+    /// Creates a ProtocolAddress using the **uppercase** string representation of a service ID, for backward compatibility.
+    public convenience init(_ serviceId: ServiceId, deviceId: UInt32) {
+        do {
+            try self.init(name: serviceId.serviceIdUppercaseString, deviceId: deviceId)
+        } catch {
+            // `self.init` can't be put inside a closure, but we want the same error handling `failOnError` gives us.
+            // So we rethrow the error here.
+            failOnError { () -> Never in throw error }
+        }
+    }
+
+    override internal class func cloneNativeHandle(_ newHandle: inout OpaquePointer?, currentHandle: OpaquePointer?) -> SignalFfiErrorRef? {
         return signal_address_clone(&newHandle, currentHandle)
     }
 
-    internal override class func destroyNativeHandle(_ handle: OpaquePointer) -> SignalFfiErrorRef? {
+    override internal class func destroyNativeHandle(_ handle: OpaquePointer) -> SignalFfiErrorRef? {
         return signal_address_destroy(handle)
     }
 
@@ -32,6 +45,13 @@ public class ProtocolAddress: ClonableHandleOwner {
         }
     }
 
+    /// Returns a ServiceId if this address contains a valid ServiceId, `nil` otherwise.
+    ///
+    /// In a future release ProtocolAddresses will *only* support ServiceIds.
+    public var serviceId: ServiceId! {
+        return try? ServiceId.parseFrom(serviceIdString: self.name)
+    }
+
     public var deviceId: UInt32 {
         return withNativeHandle { nativeHandle in
             failOnError {
@@ -40,6 +60,12 @@ public class ProtocolAddress: ClonableHandleOwner {
                 }
             }
         }
+    }
+}
+
+extension ProtocolAddress: CustomDebugStringConvertible {
+    public var debugDescription: String {
+        return "\(self.name).\(self.deviceId)"
     }
 }
 

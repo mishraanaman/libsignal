@@ -3,12 +3,13 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 
-use jni::objects::{GlobalRef, JClass, JObject, JValue};
+use std::panic::{catch_unwind, AssertUnwindSafe};
+use std::process::abort;
+
+use jni::objects::{AutoLocal, GlobalRef, JClass, JObject, JValue};
 use jni::sys::jint;
 use jni::{JNIEnv, JavaVM};
 use libsignal_bridge::{describe_panic, jni_args};
-use std::panic::{catch_unwind, AssertUnwindSafe};
-use std::process::abort;
 
 // Keep this in sync with SignalProtocolLogger.java, as well as the list below.
 #[derive(Clone, Copy)]
@@ -40,7 +41,7 @@ impl From<JavaLogLevel> for jint {
     }
 }
 
-impl From<JavaLogLevel> for JValue<'_> {
+impl From<JavaLogLevel> for JValue<'_, '_> {
     fn from(level: JavaLogLevel) -> Self {
         Self::Int(level.into())
     }
@@ -73,7 +74,7 @@ impl JniLogger {
     }
 
     fn log_impl(&self, record: &log::Record) -> jni::errors::Result<()> {
-        let env = self.vm.attach_current_thread()?;
+        let mut env = self.vm.attach_current_thread()?;
         let level: JavaLogLevel = record.level().into();
         let message = format!(
             "{}:{}: {}",
@@ -81,10 +82,12 @@ impl JniLogger {
             record.line().unwrap_or(0),
             record.args(),
         );
+        let message = AutoLocal::new(env.new_string(message)?, &env);
+        let module = AutoLocal::new(env.new_string("libsignal")?, &env);
         let args = jni_args!((
             level.into() => int,
-            env.new_string("libsignal")? => java.lang.String,
-            env.new_string(message)? => java.lang.String,
+            module => java.lang.String,
+            message => java.lang.String,
         ) -> void);
         let result = env.call_static_method(&self.logger_class, "log", args.sig, &args.args);
 
@@ -99,11 +102,14 @@ impl JniLogger {
 }
 
 impl log::Log for JniLogger {
-    fn enabled(&self, _metadata: &log::Metadata) -> bool {
-        true
+    fn enabled(&self, metadata: &log::Metadata) -> bool {
+        libsignal_bridge::logging::log_enabled_in_apps(metadata)
     }
 
     fn log(&self, record: &log::Record) {
+        if !self.enabled(record.metadata()) {
+            return;
+        }
         if self.log_impl(record).is_err() {
             // Drop the error; it's not like we can log it!
         }
@@ -126,8 +132,7 @@ fn abort_on_panic(f: impl FnOnce()) {
 fn set_max_level_from_java_level(max_level: jint) {
     // Keep this in sync with SignalProtocolLogger.java.
     let level = match max_level {
-        // The jni crate uses trace! in its own implementation.
-        2 => panic!("invalid log level (must be DEBUG or higher for libsignal)"),
+        2 => JavaLogLevel::Verbose,
         3 => JavaLogLevel::Debug,
         4 => JavaLogLevel::Info,
         5 => JavaLogLevel::Warn,

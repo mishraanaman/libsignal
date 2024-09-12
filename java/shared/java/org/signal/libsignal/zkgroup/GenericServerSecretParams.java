@@ -5,11 +5,12 @@
 
 package org.signal.libsignal.zkgroup;
 
-import java.security.SecureRandom;
-import org.signal.libsignal.zkgroup.internal.ByteArray;
-import org.signal.libsignal.internal.Native;
-
+import static org.signal.libsignal.internal.FilterExceptions.filterExceptions;
 import static org.signal.libsignal.zkgroup.internal.Constants.RANDOM_LENGTH;
+
+import java.security.SecureRandom;
+import org.signal.libsignal.internal.Native;
+import org.signal.libsignal.zkgroup.internal.ByteArray;
 
 public final class GenericServerSecretParams extends ByteArray {
 
@@ -18,7 +19,7 @@ public final class GenericServerSecretParams extends ByteArray {
   }
 
   public static GenericServerSecretParams generate(SecureRandom secureRandom) {
-    byte[] random      = new byte[RANDOM_LENGTH];
+    byte[] random = new byte[RANDOM_LENGTH];
     secureRandom.nextBytes(random);
 
     byte[] newContents = Native.GenericServerSecretParams_GenerateDeterministic(random);
@@ -27,12 +28,14 @@ public final class GenericServerSecretParams extends ByteArray {
       return new GenericServerSecretParams(newContents);
     } catch (InvalidInputException e) {
       throw new AssertionError(e);
-    } 
+    }
   }
 
-  public GenericServerSecretParams(byte[] contents) throws InvalidInputException  {
+  public GenericServerSecretParams(byte[] contents) throws InvalidInputException {
     super(contents);
-    Native.GenericServerSecretParams_CheckValidContents(contents);
+    filterExceptions(
+        InvalidInputException.class,
+        () -> Native.GenericServerSecretParams_CheckValidContents(contents));
   }
 
   public GenericServerPublicParams getPublicParams() {
@@ -41,7 +44,6 @@ public final class GenericServerSecretParams extends ByteArray {
       return new GenericServerPublicParams(newContents);
     } catch (InvalidInputException e) {
       throw new AssertionError(e);
-    } 
+    }
   }
-
 }

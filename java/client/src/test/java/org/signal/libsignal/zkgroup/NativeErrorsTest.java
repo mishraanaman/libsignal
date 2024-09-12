@@ -5,10 +5,9 @@
 
 package org.signal.libsignal.zkgroup;
 
-import org.junit.Test;
 import junit.framework.TestCase;
+import org.junit.Test;
 import org.signal.libsignal.internal.Native;
-import org.signal.libsignal.protocol.util.Hex;
 import org.signal.libsignal.zkgroup.internal.*;
 
 public final class NativeErrorsTest extends TestCase {
@@ -16,21 +15,29 @@ public final class NativeErrorsTest extends TestCase {
   @Test
   public void testBadNativeCalls() {
     byte[] params = new byte[10]; // invalid size
-    byte[] uid = new byte[16]; // valid size
+    byte[] uuidCiphertext = new byte[65]; // valid size
     boolean failed = false;
     try {
-        Native.GroupSecretParams_DecryptUuid(params, uid);
-        failed = true;
-    } catch (AssertionError e) {}
+      Native.GroupSecretParams_DecryptServiceId(params, uuidCiphertext);
+      failed = true;
+    } catch (AssertionError e) {
+      // expected
+    } catch (Exception e) {
+      // Normally callers would use filterExceptions to handle this,
+      // which turns surprise exceptions into AssertionErrors,
+      // but in this case we're *expecting* an AssertionError.
+      throw new AssertionError("Unexpected exception", e);
+    }
     if (failed) {
-        throw new AssertionError("Deserialization failure should Assert if CheckValidContents should have caught this");
+      throw new AssertionError(
+          "Deserialization failure should Assert if CheckValidContents should have caught this");
     }
 
     byte[] temp = new byte[1]; // wrong length
     try {
-        Native.ServerSecretParams_GenerateDeterministic(temp);
-        throw new AssertionError("Failed to catch wrong byte array length");
-    } catch (IllegalArgumentException e) {}
+      Native.ServerSecretParams_GenerateDeterministic(temp);
+      throw new AssertionError("Failed to catch wrong byte array length");
+    } catch (IllegalArgumentException e) {
+    }
   }
-
 }

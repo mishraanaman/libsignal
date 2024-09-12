@@ -14,8 +14,7 @@ import ExpiringProfileKeyCredentialResponse from './ExpiringProfileKeyCredential
 import ProfileKeyCommitment from './ProfileKeyCommitment';
 import ProfileKeyCredentialPresentation from './ProfileKeyCredentialPresentation';
 import ProfileKeyCredentialRequest from './ProfileKeyCredentialRequest';
-
-import { UUIDType, fromUUID } from '../internal/UUIDUtil';
+import { Aci } from '../../Address';
 
 export default class ServerZkProfileOperations {
   serverSecretParams: ServerSecretParams;
@@ -26,7 +25,7 @@ export default class ServerZkProfileOperations {
 
   issueExpiringProfileKeyCredential(
     profileKeyCredentialRequest: ProfileKeyCredentialRequest,
-    uuid: UUIDType,
+    userId: Aci,
     profileKeyCommitment: ProfileKeyCommitment,
     expirationInSeconds: number
   ): ExpiringProfileKeyCredentialResponse {
@@ -35,7 +34,7 @@ export default class ServerZkProfileOperations {
     return this.issueExpiringProfileKeyCredentialWithRandom(
       random,
       profileKeyCredentialRequest,
-      uuid,
+      userId,
       profileKeyCommitment,
       expirationInSeconds
     );
@@ -44,16 +43,16 @@ export default class ServerZkProfileOperations {
   issueExpiringProfileKeyCredentialWithRandom(
     random: Buffer,
     profileKeyCredentialRequest: ProfileKeyCredentialRequest,
-    uuid: UUIDType,
+    userId: Aci,
     profileKeyCommitment: ProfileKeyCommitment,
     expirationInSeconds: number
   ): ExpiringProfileKeyCredentialResponse {
     return new ExpiringProfileKeyCredentialResponse(
       Native.ServerSecretParams_IssueExpiringProfileKeyCredentialDeterministic(
-        this.serverSecretParams.getContents(),
+        this.serverSecretParams,
         random,
         profileKeyCredentialRequest.getContents(),
-        fromUUID(uuid),
+        userId.getServiceIdFixedWidthBinary(),
         profileKeyCommitment.getContents(),
         expirationInSeconds
       )
@@ -66,7 +65,7 @@ export default class ServerZkProfileOperations {
     now: Date = new Date()
   ): void {
     Native.ServerSecretParams_VerifyProfileKeyCredentialPresentation(
-      this.serverSecretParams.getContents(),
+      this.serverSecretParams,
       groupPublicParams.getContents(),
       profileKeyCredentialPresentation.getContents(),
       Math.floor(now.getTime() / 1000)

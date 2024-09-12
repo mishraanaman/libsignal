@@ -74,10 +74,12 @@
 //!
 //! By default, `bridge_fn` tries to pick a good name for each exposed entry point:
 //!
-//! - FFI: Convert the function's name to `lower_snake_case` and prepend `signal_`.
-//! - JNI: Escape any underscores in the function's name per the [JNI spec][], then prepend
-//!  `Java_org_signal_libsignal_internal_Native_` to expose the function as a static method of the
-//!  class `org.signal.libsignal.internal.Native`.
+//! - FFI: Convert the function's name to `lower_snake_case` and prepend the value of environment
+//!   variable `LIBSIGNAL_BRIDGE_FN_PREFIX_FFI`, which the client crate should set in its build.rs.
+//! - JNI: Escape any underscores in the function's name per the [JNI spec][], then prepend the
+//!   value of environment variable `LIBSIGNAL_BRIDGE_FN_PREFIX_JNI`, which the client should set in
+//!   its build.rs. The value should be something like `Java_org_signal_libsignal_internal_Native_`
+//!   to expose the function as a static method of the class `org.signal.libsignal.internal.Native`.
 //! - Node: Use the original function's name.
 //!
 //! As such, the recommended naming scheme for `bridge_fn` functions is `ObjectOrGroup_Operation`.
@@ -107,7 +109,7 @@
 //! # Adding new argument and result types
 //!
 //! If your argument or result type is a Rust value being wrapped in an opaque box, declare it
-//! using the `bridge_handle` macro alongside other such types. Otherwise, there are two steps:
+//! using the `bridge_as_handle` macro alongside other such types. Otherwise, there are two steps:
 //!
 //! 1. Argument and result types for FFI and JNI are determined by macros `ffi_arg_type`,
 //!    `ffi_result_type`, `jni_arg_type`, and `jni_result_type`. You may need to add your new type
@@ -116,7 +118,7 @@
 //!
 //! 2. Argument types conform to one or more of the following bridge-specific traits:
 //!
-//!     - `ffi::ArgTypeInfo` or `ffi::SizedArgTypeInfo`
+//!     - `ffi::ArgTypeInfo`
 //!     - `jni::ArgTypeInfo`
 //!     - `node::ArgTypeInfo` and/or `node::AsyncArgTypeInfo`
 //!
@@ -131,77 +133,170 @@
 //!
 //! # Limitations
 //!
-//! - Input buffers require special treatment for FFI so that their size can be passed in.
-//!   This needs special handling in the implementation of the macros to generate multiple
-//!   parameters in the FFI entry point that map to a single parameter in the corresponding Rust
-//!   function. Supporting more types that would require multiple parameters is non-trivial,
-//!   particularly when trying to do so on the syntactic representation of the AST that macros are
-//!   restricted to.
-//!
 //! - There is no support for multiple return values, even though some of the FFI entry points
 //!   use multiple output parameters. These functions must be implemented manually.
 
 use proc_macro::TokenStream;
 use quote::*;
+use syn::parse::Parse;
 use syn::punctuated::Punctuated;
+use syn::spanned::Spanned;
 use syn::*;
 use syn_mid::ItemFn;
 
 mod ffi;
 mod jni;
 mod node;
+mod util;
 
 fn value_for_meta_key<'a>(
     meta_values: &'a Punctuated<MetaNameValue, Token![,]>,
     key: &str,
-) -> Option<&'a Lit> {
+) -> Option<&'a Expr> {
     meta_values
         .iter()
         .find(|meta| meta.path.get_ident().map_or(false, |ident| ident == key))
-        .map(|meta| &meta.lit)
+        .map(|meta| &meta.value)
 }
 
 fn name_for_meta_key(
     meta_values: &Punctuated<MetaNameValue, Token![,]>,
     key: &str,
-    enabled: bool,
     default: impl FnOnce() -> String,
 ) -> Result<Option<String>> {
-    if !enabled {
-        return Ok(None);
-    }
     match value_for_meta_key(meta_values, key) {
-        Some(Lit::Str(name_str)) => Ok(Some(name_str.value())),
-        Some(Lit::Bool(LitBool { value: false, .. })) => Ok(None),
+        Some(Expr::Lit(ExprLit {
+            lit: Lit::Str(name_str),
+            ..
+        })) => Ok(Some(name_str.value())),
+        Some(Expr::Lit(ExprLit {
+            lit: Lit::Bool(LitBool { value: false, .. }),
+            ..
+        })) => Ok(None),
         Some(value) => Err(Error::new(value.span(), "name must be a string literal")),
         None => Ok(Some(default())),
     }
 }
 
 #[derive(Clone, Copy)]
+#[cfg_attr(test, derive(Debug, PartialEq))]
 enum ResultKind {
     Regular,
     Void,
 }
 
-fn bridge_fn_impl(attr: TokenStream, item: TokenStream, result_kind: ResultKind) -> TokenStream {
+impl From<&syn_mid::Signature> for ResultKind {
+    fn from(value: &syn_mid::Signature) -> Self {
+        let type_ = match &value.output {
+            ReturnType::Default => return Self::Void,
+            ReturnType::Type(_, type_) => type_.as_ref(),
+        };
+
+        let output_type = match &type_ {
+            syn::Type::Path(path) if path.qself.is_none() => &path.path,
+            syn::Type::Tuple(t) if t.elems.is_empty() => return ResultKind::Void,
+            _ => return ResultKind::Regular,
+        };
+
+        let is_void_result = |segment: &syn::PathSegment| {
+            if segment.ident != "Result" {
+                return false;
+            }
+
+            let PathArguments::AngleBracketed(args) = &segment.arguments else {
+                return false;
+            };
+
+            args.args.first().is_some_and(|arg| match arg {
+                GenericArgument::Type(syn::Type::Tuple(t)) => t.elems.is_empty(),
+                _ => false,
+            })
+        };
+
+        let last_segment = output_type.segments.last();
+        if last_segment.is_some_and(is_void_result) {
+            return ResultKind::Void;
+        }
+
+        ResultKind::Regular
+    }
+}
+
+enum BridgingKind<T = Type> {
+    Regular,
+    Io { runtime: T },
+}
+
+#[cfg_attr(test, derive(PartialEq, Eq, Debug))]
+struct BridgeIoParams {
+    runtime: Type,
+    item_names: Punctuated<MetaNameValue, Token![,]>,
+}
+
+impl Parse for BridgeIoParams {
+    fn parse(input: parse::ParseStream) -> Result<Self> {
+        let runtime: Type = input.parse()?;
+        if input.is_empty() {
+            // bridge_io(MyRuntime)
+            return Ok(Self {
+                runtime,
+                item_names: Default::default(),
+            });
+        }
+        if input.peek(Token![=]) {
+            // bridge_io(jni = "blah")
+            return Err(Error::new(
+                runtime.span(),
+                "missing async runtime type in #[bridge_io]",
+            ));
+        }
+        input.parse::<Token![,]>()?;
+        // bridge_io(MyRuntime, jni = "blah")
+        let item_names = Punctuated::<MetaNameValue, Token![,]>::parse_terminated(input)?;
+        Ok(Self {
+            runtime,
+            item_names,
+        })
+    }
+}
+
+fn bridge_fn_impl(
+    attr: TokenStream,
+    item: TokenStream,
+    bridging_kind: BridgingKind<()>,
+) -> TokenStream {
     let function = parse_macro_input!(item as ItemFn);
 
-    let item_names =
-        parse_macro_input!(attr with Punctuated<MetaNameValue, Token![,]>::parse_terminated);
-    let ffi_name = match name_for_meta_key(&item_names, "ffi", cfg!(feature = "ffi"), || {
+    let (bridging_kind, item_names) = match bridging_kind {
+        BridgingKind::Regular => (
+            BridgingKind::Regular,
+            parse_macro_input!(attr with Punctuated<MetaNameValue, Token![,]>::parse_terminated),
+        ),
+        BridgingKind::Io { runtime: () } => {
+            let params = parse_macro_input!(attr as BridgeIoParams);
+            (
+                BridgingKind::Io {
+                    runtime: params.runtime,
+                },
+                params.item_names,
+            )
+        }
+    };
+    let result_kind = ResultKind::from(&function.sig);
+
+    let ffi_name = match name_for_meta_key(&item_names, "ffi", || {
         ffi::name_from_ident(&function.sig.ident)
     }) {
         Ok(name) => name,
         Err(error) => return error.to_compile_error().into(),
     };
-    let jni_name = match name_for_meta_key(&item_names, "jni", cfg!(feature = "jni"), || {
+    let jni_name = match name_for_meta_key(&item_names, "jni", || {
         jni::name_from_ident(&function.sig.ident)
     }) {
         Ok(name) => name,
         Err(error) => return error.to_compile_error().into(),
     };
-    let node_name = match name_for_meta_key(&item_names, "node", cfg!(feature = "node"), || {
+    let node_name = match name_for_meta_key(&item_names, "node", || {
         node::name_from_ident(&function.sig.ident)
     }) {
         Ok(name) => name,
@@ -214,12 +309,23 @@ fn bridge_fn_impl(attr: TokenStream, item: TokenStream, result_kind: ResultKind)
     let maybe_features = [ffi_feature, jni_feature, node_feature];
     let feature_list = maybe_features.iter().flatten();
 
-    let ffi_fn = ffi_name.map(|name| ffi::bridge_fn(name, &function.sig, result_kind));
-    let jni_fn = jni_name.map(|name| jni::bridge_fn(name, &function.sig, result_kind));
-    let node_fn = node_name.map(|name| node::bridge_fn(name, &function.sig, result_kind));
+    // We could early-exit on the Errors returned from generating each wrapper,
+    // but since they could be for unrelated issues, it's better to show all of them to the user.
+    let ffi_fn = ffi_name.map(|name| {
+        ffi::bridge_fn(&name, &function.sig, result_kind, &bridging_kind)
+            .unwrap_or_else(Error::into_compile_error)
+    });
+    let jni_fn = jni_name.map(|name| {
+        jni::bridge_fn(&name, &function.sig, &bridging_kind)
+            .unwrap_or_else(Error::into_compile_error)
+    });
+    let node_fn = node_name.map(|name| {
+        node::bridge_fn(&name, &function.sig, &bridging_kind)
+            .unwrap_or_else(Error::into_compile_error)
+    });
 
     quote!(
-        #[allow(non_snake_case)]
+        #[allow(non_snake_case, clippy::needless_pass_by_ref_mut)]
         #[cfg(any(#(#feature_list,)*))]
         #[inline(always)]
         #function
@@ -251,29 +357,117 @@ fn bridge_fn_impl(attr: TokenStream, item: TokenStream, result_kind: ResultKind)
 /// ```
 #[proc_macro_attribute]
 pub fn bridge_fn(attr: TokenStream, item: TokenStream) -> TokenStream {
-    bridge_fn_impl(attr, item, ResultKind::Regular)
+    bridge_fn_impl(attr, item, BridgingKind::Regular)
 }
 
-/// Generates C, Java, and Node entry points for a Rust function that returns `Result<(), _>`.
-///
-/// Because the C bindings conventions use out-parameters for successful return values,
-/// a case of "no result on success" must be annotated specially.
-///
-/// See the [crate-level documentation](crate) for more information.
-///
-/// # Example
-///
-/// ```ignore
-/// // Produces a C function manually named "signal_process_postkey"
-/// // and a JNI function named "PostKey_1Process" (with JNI "_1" mangling for an underscore),
-/// // with the Node entry point disabled.
-/// # #[cfg(ignore_even_when_running_all_tests)]
-/// #[bridge_fn_void(ffi = "process_postkey", node = false)]
-/// fn PostKey_Process(post_key: &PostKey) -> Result<()> {
-///   // ...
-/// }
-/// ```
 #[proc_macro_attribute]
-pub fn bridge_fn_void(attr: TokenStream, item: TokenStream) -> TokenStream {
-    bridge_fn_impl(attr, item, ResultKind::Void)
+pub fn bridge_io(attr: TokenStream, item: TokenStream) -> TokenStream {
+    bridge_fn_impl(attr, item, BridgingKind::Io { runtime: () })
+}
+
+#[cfg(test)]
+mod bridge_io_params_tests {
+    use super::*;
+
+    #[test]
+    fn invalid() {
+        assert!(parse2::<BridgeIoParams>(quote!()).is_err());
+        assert!(parse2::<BridgeIoParams>(quote!(-notAType)).is_err());
+        assert!(parse2::<BridgeIoParams>(quote!(ffi = false)).is_err());
+    }
+
+    #[test]
+    fn just_runtime() {
+        let params: BridgeIoParams = parse2(quote!(some::Runtime)).expect("valid");
+        assert_eq!(
+            params,
+            BridgeIoParams {
+                runtime: parse_quote!(some::Runtime),
+                item_names: Default::default()
+            }
+        );
+
+        // Check that a trailing comma produces the same result.
+        assert_eq!(params, parse2(quote!(some::Runtime,)).expect("valid"))
+    }
+
+    #[test]
+    fn runtime_plus_renaming() {
+        let params: BridgeIoParams =
+            parse2(quote!(some::Runtime, a = "1", b = "2")).expect("valid");
+        assert_eq!(params.runtime, parse_quote!(some::Runtime));
+        assert_eq!(params.item_names, parse_quote!(a = "1", b = "2"));
+
+        let params_with_trailing_comma: BridgeIoParams =
+            parse2(quote!(some::Runtime, a = "1", b = "2")).expect("valid");
+        assert_eq!(params.runtime, params_with_trailing_comma.runtime);
+        // The trailing comma makes `item_names` unequal, but the items within are still equal.
+        assert_eq!(
+            params.item_names.into_iter().collect::<Vec<_>>(),
+            params_with_trailing_comma
+                .item_names
+                .into_iter()
+                .collect::<Vec<_>>(),
+        );
+    }
+}
+
+#[cfg(test)]
+mod return_type_test {
+    use super::*;
+
+    #[test]
+    fn implicit() {
+        let parsed: ItemFn = parse_quote! {
+            fn no_return() {}
+        };
+        assert_eq!(ResultKind::from(&parsed.sig), ResultKind::Void)
+    }
+
+    #[test]
+    fn explicit_empty_tuple() {
+        let parsed: ItemFn = parse_quote! {
+            fn returns_empty_tuple() -> () {}
+        };
+        assert_eq!(ResultKind::from(&parsed.sig), ResultKind::Void)
+    }
+
+    #[test]
+    fn result_returns() {
+        let parsed: &[ItemFn] = &[
+            parse_quote! { fn result_empty_tuple() -> Result<(), Err> { unimplemented!() } },
+            parse_quote! { fn result_empty_tuple_alias() -> Result<()> { unimplemented!() } },
+            parse_quote! { fn result_fq_empty_tuple() -> std::result::Result<(), Err> { unimplemented!() } },
+            parse_quote! { fn result_fq_empty_tuple_alias() -> my::package::custom::Result<()> { unimplemented!() } },
+        ];
+
+        for item in parsed {
+            assert_eq!(
+                ResultKind::from(&item.sig),
+                ResultKind::Void,
+                "{}",
+                item.to_token_stream()
+            );
+        }
+    }
+
+    #[test]
+    fn regular_types() {
+        let parsed: &[ItemFn] = &[
+            parse_quote! { fn returns_bool() -> bool { unimplemented!() } },
+            parse_quote! { fn returns_u32() -> u32 { unimplemented!() } },
+            parse_quote! { fn returns_result_u32_alias() -> Result<u32> { unimplemented!() } },
+            parse_quote! { fn returns_result_u32() -> Result<u32, Err> { unimplemented!() } },
+            parse_quote! { fn returns_fq_result_u32() -> std::result::Result<u32, Err> { unimplemented!() } },
+        ];
+
+        for item in parsed {
+            assert_eq!(
+                ResultKind::from(&item.sig),
+                ResultKind::Regular,
+                "{}",
+                item.to_token_stream()
+            );
+        }
+    }
 }

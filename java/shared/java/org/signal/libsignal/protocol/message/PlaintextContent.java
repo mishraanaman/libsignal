@@ -1,13 +1,14 @@
-/**
- * Copyright (C) 2014-2016 Open Whisper Systems
- *
- * Licensed according to the LICENSE file in this repository.
- */
+//
+// Copyright 2014-2016 Signal Messenger, LLC.
+// SPDX-License-Identifier: AGPL-3.0-only
+//
+
 package org.signal.libsignal.protocol.message;
+
+import static org.signal.libsignal.internal.FilterExceptions.filterExceptions;
 
 import org.signal.libsignal.internal.Native;
 import org.signal.libsignal.internal.NativeHandleGuard;
-
 import org.signal.libsignal.protocol.InvalidMessageException;
 import org.signal.libsignal.protocol.InvalidVersionException;
 
@@ -15,9 +16,10 @@ public final class PlaintextContent implements CiphertextMessage, NativeHandleGu
 
   private final long unsafeHandle;
 
-  @Override @SuppressWarnings("deprecation")
+  @Override
+  @SuppressWarnings("deprecation")
   protected void finalize() {
-     Native.PlaintextContent_Destroy(this.unsafeHandle);
+    Native.PlaintextContent_Destroy(this.unsafeHandle);
   }
 
   public long unsafeNativeHandleWithoutGuard() {
@@ -32,18 +34,24 @@ public final class PlaintextContent implements CiphertextMessage, NativeHandleGu
 
   public PlaintextContent(DecryptionErrorMessage message) {
     try (NativeHandleGuard messageGuard = new NativeHandleGuard(message)) {
-      this.unsafeHandle = Native.PlaintextContent_FromDecryptionErrorMessage(messageGuard.nativeHandle());
+      this.unsafeHandle =
+          Native.PlaintextContent_FromDecryptionErrorMessage(messageGuard.nativeHandle());
     }
   }
 
-  public PlaintextContent(byte[] serialized) throws InvalidMessageException, InvalidVersionException {
-    unsafeHandle = Native.PlaintextContent_Deserialize(serialized);
+  public PlaintextContent(byte[] serialized)
+      throws InvalidMessageException, InvalidVersionException {
+    unsafeHandle =
+        filterExceptions(
+            InvalidMessageException.class,
+            InvalidVersionException.class,
+            () -> Native.PlaintextContent_Deserialize(serialized));
   }
 
   @Override
   public byte[] serialize() {
     try (NativeHandleGuard guard = new NativeHandleGuard(this)) {
-      return Native.PlaintextContent_GetSerialized(guard.nativeHandle());
+      return filterExceptions(() -> Native.PlaintextContent_GetSerialized(guard.nativeHandle()));
     }
   }
 
@@ -54,7 +62,7 @@ public final class PlaintextContent implements CiphertextMessage, NativeHandleGu
 
   public byte[] getBody() {
     try (NativeHandleGuard guard = new NativeHandleGuard(this)) {
-      return Native.PlaintextContent_GetBody(guard.nativeHandle());
+      return filterExceptions(() -> Native.PlaintextContent_GetBody(guard.nativeHandle()));
     }
   }
 }

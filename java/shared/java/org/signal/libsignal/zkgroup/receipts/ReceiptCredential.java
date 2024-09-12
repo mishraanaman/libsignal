@@ -5,16 +5,18 @@
 
 package org.signal.libsignal.zkgroup.receipts;
 
-import java.nio.ByteBuffer;
+import static org.signal.libsignal.internal.FilterExceptions.filterExceptions;
+
+import org.signal.libsignal.internal.Native;
 import org.signal.libsignal.zkgroup.InvalidInputException;
 import org.signal.libsignal.zkgroup.internal.ByteArray;
-import org.signal.libsignal.internal.Native;
 
 public final class ReceiptCredential extends ByteArray {
 
   public ReceiptCredential(byte[] contents) throws InvalidInputException {
     super(contents);
-    Native.ReceiptCredential_CheckValidContents(contents);
+    filterExceptions(
+        InvalidInputException.class, () -> Native.ReceiptCredential_CheckValidContents(contents));
   }
 
   public long getReceiptExpirationTime() {
@@ -24,5 +26,4 @@ public final class ReceiptCredential extends ByteArray {
   public long getReceiptLevel() {
     return Native.ReceiptCredential_GetReceiptLevel(contents);
   }
-
 }

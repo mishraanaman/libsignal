@@ -1,0 +1,39 @@
+#
+# Copyright (C) 2024 Signal Messenger, LLC.
+# SPDX-License-Identifier: AGPL-3.0-only
+#
+
+[package]
+name = "libsignal-bridge-testing"
+version = "0.1.0"
+authors = ["Signal Messenger LLC"]
+edition = "2021"
+license = "AGPL-3.0-only"
+
+[dependencies]
+attest = { path = "../../../attest" }
+libsignal-bridge-macros = { path = "../macros" }
+libsignal-bridge-types = { path = "../types" }
+libsignal-message-backup = { path = "../../../message-backup", features = ["json"] }
+libsignal-net = { path = "../../../net" }
+libsignal-protocol = { path = "../../../protocol" }
+
+futures-util = { workspace = true }
+http = { workspace = true }
+nonzero_ext = { workspace = true }
+paste = { workspace = true }
+prost = { workspace = true }
+scopeguard = { workspace = true }
+strum = { workspace = true, features = ["derive"] }
+tokio = { workspace = true }
+uuid = { workspace = true }
+
+jni = { workspace = true, optional = true }
+linkme = { workspace = true, optional = true }
+neon = { workspace = true, optional = true, default-features = false, features = ["napi-6"] }
+
+[features]
+ffi = ["libsignal-bridge-types/ffi"]
+jni = ["dep:jni", "libsignal-bridge-types/jni"]
+node = ["dep:linkme", "dep:neon", "libsignal-bridge-types/node"]
+signal-media = ["libsignal-bridge-types/signal-media"]

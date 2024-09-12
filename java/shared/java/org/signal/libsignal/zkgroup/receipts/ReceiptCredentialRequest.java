@@ -5,13 +5,17 @@
 
 package org.signal.libsignal.zkgroup.receipts;
 
+import static org.signal.libsignal.internal.FilterExceptions.filterExceptions;
+
+import org.signal.libsignal.internal.Native;
 import org.signal.libsignal.zkgroup.InvalidInputException;
 import org.signal.libsignal.zkgroup.internal.ByteArray;
-import org.signal.libsignal.internal.Native;
 
 public final class ReceiptCredentialRequest extends ByteArray {
   public ReceiptCredentialRequest(byte[] contents) throws InvalidInputException {
     super(contents);
-    Native.ReceiptCredentialRequest_CheckValidContents(contents);
+    filterExceptions(
+        InvalidInputException.class,
+        () -> Native.ReceiptCredentialRequest_CheckValidContents(contents));
   }
 }

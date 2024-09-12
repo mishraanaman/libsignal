@@ -4,100 +4,32 @@
 //
 
 use ::signal_crypto;
-use libsignal_bridge_macros::*;
-use signal_crypto::*;
-
 use aes_gcm_siv::aead::generic_array::typenum::Unsigned;
-use aes_gcm_siv::aead::{AeadCore, AeadInPlace, NewAead};
+use aes_gcm_siv::{AeadCore, AeadInPlace, KeyInit};
+use libsignal_bridge_macros::*;
+use libsignal_bridge_types::crypto::{Aes256GcmDecryption, Aes256GcmEncryption, Aes256GcmSiv};
+use signal_crypto::{Aes256Ctr32, CryptographicHash, CryptographicMac, Error, Result};
 
 use crate::support::*;
 use crate::*;
 
-pub struct Aes256GcmEncryption {
-    gcm: Option<signal_crypto::Aes256GcmEncryption>,
-}
-
-impl Aes256GcmEncryption {
-    pub fn new(key: &[u8], nonce: &[u8], associated_data: &[u8]) -> Result<Self> {
-        let gcm = signal_crypto::Aes256GcmEncryption::new(key, nonce, associated_data)?;
-        Ok(Self { gcm: Some(gcm) })
-    }
-
-    pub fn encrypt(&mut self, buf: &mut [u8]) -> Result<()> {
-        match &mut self.gcm {
-            Some(gcm) => gcm.encrypt(buf),
-            None => Err(Error::InvalidState),
-        }
-    }
-
-    pub fn compute_tag(&mut self) -> Result<Vec<u8>> {
-        if self.gcm.is_none() {
-            return Err(Error::InvalidState);
-        }
-
-        let gcm = self.gcm.take().expect("Validated to be Some");
-
-        Ok(gcm.compute_tag()?.to_vec())
-    }
-}
-
-pub struct Aes256GcmDecryption {
-    gcm: Option<signal_crypto::Aes256GcmDecryption>,
-}
-
-impl Aes256GcmDecryption {
-    pub fn new(key: &[u8], nonce: &[u8], associated_data: &[u8]) -> Result<Self> {
-        let gcm = signal_crypto::Aes256GcmDecryption::new(key, nonce, associated_data)?;
-        Ok(Self { gcm: Some(gcm) })
-    }
-
-    pub fn decrypt(&mut self, buf: &mut [u8]) -> Result<()> {
-        match &mut self.gcm {
-            Some(gcm) => gcm.decrypt(buf),
-            None => Err(Error::InvalidState),
-        }
-    }
-
-    pub fn verify_tag(&mut self, tag: &[u8]) -> Result<bool> {
-        if self.gcm.is_none() {
-            return Err(Error::InvalidState);
-        }
-
-        let gcm = self.gcm.take().expect("Validated to be Some");
-        match gcm.verify_tag(tag) {
-            Ok(()) => Ok(true),
-            Err(Error::InvalidTag) => Ok(false),
-            Err(e) => Err(e),
-        }
-    }
-}
-
-// Explicit wrapper for cbindgen purposes.
-pub struct Aes256GcmSiv(aes_gcm_siv::Aes256GcmSiv);
-
-bridge_handle!(CryptographicHash, mut = true, ffi = false, node = false);
-bridge_handle!(CryptographicMac, mut = true, ffi = false, node = false);
-bridge_handle!(Aes256GcmSiv, clone = false);
-bridge_handle!(Aes256Ctr32, clone = false, mut = true, node = false);
-bridge_handle!(Aes256GcmEncryption, clone = false, mut = true, node = false);
-bridge_handle!(Aes256GcmDecryption, clone = false, mut = true, node = false);
+bridge_handle_fns!(CryptographicHash, ffi = false, node = false);
+bridge_handle_fns!(CryptographicMac, ffi = false, node = false);
+bridge_handle_fns!(Aes256GcmSiv, clone = false);
+bridge_handle_fns!(Aes256Ctr32, clone = false, node = false);
+bridge_handle_fns!(Aes256GcmEncryption, clone = false, node = false);
+bridge_handle_fns!(Aes256GcmDecryption, clone = false, node = false);
 
 #[bridge_fn(node = false)]
 fn Aes256Ctr32_New(key: &[u8], nonce: &[u8], initial_ctr: u32) -> Result<Aes256Ctr32> {
     Aes256Ctr32::from_key(key, nonce, initial_ctr)
 }
 
-#[bridge_fn_void(node = false)]
-fn Aes256Ctr32_Process(
-    ctr: &mut Aes256Ctr32,
-    data: &mut [u8],
-    offset: u32,
-    length: u32,
-) -> Result<()> {
+#[bridge_fn(node = false)]
+fn Aes256Ctr32_Process(ctr: &mut Aes256Ctr32, data: &mut [u8], offset: u32, length: u32) {
     let offset = offset as usize;
     let length = length as usize;
-    ctr.process(&mut data[offset..offset + length])?;
-    Ok(())
+    ctr.process(&mut data[offset..offset + length]);
 }
 
 #[bridge_fn(node = false)]
@@ -109,21 +41,20 @@ fn Aes256GcmEncryption_New(
     Aes256GcmEncryption::new(key, nonce, associated_data)
 }
 
-#[bridge_fn_void(node = false)]
+#[bridge_fn(node = false)]
 fn Aes256GcmEncryption_Update(
     gcm: &mut Aes256GcmEncryption,
     data: &mut [u8],
     offset: u32,
     length: u32,
-) -> Result<()> {
+) {
     let offset = offset as usize;
     let length = length as usize;
-    gcm.encrypt(&mut data[offset..offset + length])?;
-    Ok(())
+    gcm.encrypt(&mut data[offset..offset + length]);
 }
 
 #[bridge_fn(node = false)]
-fn Aes256GcmEncryption_ComputeTag(gcm: &mut Aes256GcmEncryption) -> Result<Vec<u8>> {
+fn Aes256GcmEncryption_ComputeTag(gcm: &mut Aes256GcmEncryption) -> Vec<u8> {
     gcm.compute_tag()
 }
 
@@ -136,17 +67,16 @@ fn Aes256GcmDecryption_New(
     Aes256GcmDecryption::new(key, nonce, associated_data)
 }
 
-#[bridge_fn_void(node = false)]
+#[bridge_fn(node = false)]
 fn Aes256GcmDecryption_Update(
     gcm: &mut Aes256GcmDecryption,
     data: &mut [u8],
     offset: u32,
     length: u32,
-) -> Result<()> {
+) {
     let offset = offset as usize;
     let length = length as usize;
-    gcm.decrypt(&mut data[offset..offset + length])?;
-    Ok(())
+    gcm.decrypt(&mut data[offset..offset + length]);
 }
 
 #[bridge_fn(node = false)]
@@ -210,25 +140,25 @@ fn CryptographicHash_New(algo: String) -> Result<CryptographicHash> {
     CryptographicHash::new(&algo)
 }
 
-#[bridge_fn_void(ffi = false, node = false)]
-fn CryptographicHash_Update(hash: &mut CryptographicHash, input: &[u8]) -> Result<()> {
+#[bridge_fn(ffi = false, node = false)]
+fn CryptographicHash_Update(hash: &mut CryptographicHash, input: &[u8]) {
     hash.update(input)
 }
 
-#[bridge_fn_void(ffi = false, node = false)]
+#[bridge_fn(ffi = false, node = false)]
 fn CryptographicHash_UpdateWithOffset(
     hash: &mut CryptographicHash,
     input: &[u8],
     offset: u32,
     len: u32,
-) -> Result<()> {
+) {
     let offset = offset as usize;
     let len = len as usize;
     hash.update(&input[offset..(offset + len)])
 }
 
 #[bridge_fn(ffi = false, node = false)]
-fn CryptographicHash_Finalize(hash: &mut CryptographicHash) -> Result<Vec<u8>> {
+fn CryptographicHash_Finalize(hash: &mut CryptographicHash) -> Vec<u8> {
     hash.finalize()
 }
 
@@ -237,24 +167,24 @@ fn CryptographicMac_New(algo: String, key: &[u8]) -> Result<CryptographicMac> {
     CryptographicMac::new(&algo, key)
 }
 
-#[bridge_fn_void(ffi = false, node = false)]
-fn CryptographicMac_Update(mac: &mut CryptographicMac, input: &[u8]) -> Result<()> {
+#[bridge_fn(ffi = false, node = false)]
+fn CryptographicMac_Update(mac: &mut CryptographicMac, input: &[u8]) {
     mac.update(input)
 }
 
-#[bridge_fn_void(ffi = false, node = false)]
+#[bridge_fn(ffi = false, node = false)]
 fn CryptographicMac_UpdateWithOffset(
     mac: &mut CryptographicMac,
     input: &[u8],
     offset: u32,
     len: u32,
-) -> Result<()> {
+) {
     let offset = offset as usize;
     let len = len as usize;
     mac.update(&input[offset..(offset + len)])
 }
 
 #[bridge_fn(ffi = false, node = false)]
-fn CryptographicMac_Finalize(mac: &mut CryptographicMac) -> Result<Vec<u8>> {
+fn CryptographicMac_Finalize(mac: &mut CryptographicMac) -> Vec<u8> {
     mac.finalize()
 }

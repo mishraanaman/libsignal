@@ -1,9 +1,11 @@
-/**
- * Copyright (C) 2014-2016 Open Whisper Systems
- *
- * Licensed according to the LICENSE file in this repository.
- */
+//
+// Copyright 2014-2016 Signal Messenger, LLC.
+// SPDX-License-Identifier: AGPL-3.0-only
+//
+
 package org.signal.libsignal.protocol.util;
+
+import java.util.Objects;
 
 public class Pair<T1, T2> {
   private final T1 v1;
@@ -14,27 +16,29 @@ public class Pair<T1, T2> {
     this.v2 = v2;
   }
 
-  public T1 first(){
+  public T1 first() {
     return v1;
   }
 
-  public T2 second(){
+  public T2 second() {
     return v2;
   }
 
+  @Override
   public boolean equals(Object o) {
-    return o instanceof Pair &&
-        equal(((Pair) o).first(), first()) &&
-        equal(((Pair) o).second(), second());
+    return o instanceof Pair
+        && Objects.equals(((Pair) o).first(), first())
+        && Objects.equals(((Pair) o).second(), second());
   }
 
+  @Override
   public int hashCode() {
-    return first().hashCode() ^ second().hashCode();
+    return Objects.hash(first(), second());
   }
 
-  private boolean equal(Object first, Object second) {
-    if (first == null && second == null) return true;
-    if (first == null || second == null) return false;
-    return first.equals(second);
+  @Override
+  public String toString() {
+    // Useful for debugging, matches the description used by Apache Commons' Pair.
+    return "(" + first() + "," + second() + ")";
   }
 }

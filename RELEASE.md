@@ -12,7 +12,8 @@ A change is "breaking" if it will require updates in any of the Signal client ap
 
 ```
 bin/update_versions.py 0.x.y
-cargo check --workspace # make sure Cargo.lock is updated
+cargo check --workspace --all-features # make sure Cargo.lock is updated
+bin/regenerate_acknowledgments.sh # include the new version number in the acknowledgments
 ```
 
 ## 2. Record the code size for the Java library
@@ -46,27 +47,13 @@ v0.8.3
 
 Note that both the tag *and* the branch need to be pushed.
 
-## 5. Tag signalapp/boring if needed
+## 5. Submit to package repositories as needed
 
-If the depended-on version of `boring` has changed (check Cargo.lock), tag the commit in the public [signalapp/boring][] repository.
+### Android and Server: Sonatype
 
-```
-# In the checkout for signalapp/boring
-git tag -a libsignal-v0.x.y -m 'libsignal v0.x.y' BORING_COMMIT_HASH
-git push origin libsignal-v0.x.y
-```
+In the signalapp/libsignal repository on GitHub, run the "Upload Java libraries to Sonatype" action on the tag you just made. Then go to [Maven Central][] and wait for the build to show up (it can take up to an hour).
 
-[signalapp/boring]: https://github.com/signalapp/boring
-
-## 6. Submit to package repositories as needed
-
-### Android: Sonatype
-
-1. Wait for the "Publish JNI Artifacts to GitHub Release" action to complete. These artifacts, though not built reproducibly, will be included in the `libsignal-client` and `libsignal-server` jars to support running on macOS and Windows as well.
-2. Set the environment variables `SONATYPE_USERNAME`, `SONATYPE_PASSWORD`, `KEYRING_FILE`, `SIGNING_KEY`, and `SIGNING_KEY_PASSSWORD`.
-3. Run `make -C java publish_java` to build through Docker.
-
-Note that Sonatype is pretty slow; even after the build completes it might take a while for it to show up.
+[Maven Central]: https://central.sonatype.com/artifact/org.signal/libsignal-client/versions
 
 ### Node: NPM
 

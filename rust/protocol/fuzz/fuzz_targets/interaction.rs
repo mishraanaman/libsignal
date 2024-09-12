@@ -5,7 +5,8 @@
 
 #![no_main]
 
-use std::convert::TryFrom;
+
+use std::time::SystemTime;
 
 use futures_util::FutureExt;
 use libfuzzer_sys::fuzz_target;
@@ -19,6 +20,7 @@ struct Participant {
     store: InMemSignalProtocolStore,
     message_queue: Vec<(CiphertextMessage, Box<[u8]>)>,
     archive_count: u8,
+    pre_key_count: u32,
 }
 
 impl Participant {
@@ -33,38 +35,39 @@ impl Participant {
         let their_signed_pre_key_public = their_signed_pre_key_pair.public_key.serialize();
         let their_signed_pre_key_signature = them
             .store
-            .get_identity_key_pair(None)
+            .get_identity_key_pair()
             .await
             .unwrap()
             .private_key()
             .calculate_signature(&their_signed_pre_key_public, rng)
             .unwrap();
 
-        let signed_pre_key_id: SignedPreKeyId = rng.gen_range(0, 0xFF_FFFF).into();
+        them.pre_key_count += 1;
+        let signed_pre_key_id: SignedPreKeyId = them.pre_key_count.into();
 
         them.store
             .save_signed_pre_key(
-                signed_pre_key_id.into(),
+                signed_pre_key_id,
                 &SignedPreKeyRecord::new(
                     signed_pre_key_id,
-                    /*timestamp*/ 42,
+                    libsignal_protocol::Timestamp::from_epoch_millis(42),
                     &their_signed_pre_key_pair,
                     &their_signed_pre_key_signature,
                 ),
-                None,
             )
             .await
             .unwrap();
 
+        them.pre_key_count += 1;
+        let pre_key_id: PreKeyId = them.pre_key_count.into();
+
         let pre_key_info = if use_one_time_pre_key {
-            let pre_key_id: PreKeyId = rng.gen_range(0, 0xFF_FFFF).into();
             let one_time_pre_key = KeyPair::generate(rng);
 
             them.store
                 .save_pre_key(
                     pre_key_id,
                     &PreKeyRecord::new(pre_key_id, &one_time_pre_key),
-                    None,
                 )
                 .await
                 .unwrap();
@@ -74,15 +77,15 @@ impl Participant {
         };
 
         let their_pre_key_bundle = PreKeyBundle::new(
-            them.store.get_local_registration_id(None).await.unwrap(),
+            them.store.get_local_registration_id().await.unwrap(),
             1.into(), // device id
-            pre_key_info.into(),
-            signed_pre_key_id.into(),
+            pre_key_info,
+            signed_pre_key_id,
             their_signed_pre_key_pair.public_key,
             their_signed_pre_key_signature.into_vec(),
             *them
                 .store
-                .get_identity_key_pair(None)
+                .get_identity_key_pair()
                 .await
                 .unwrap()
                 .identity_key(),
@@ -94,8 +97,8 @@ impl Participant {
             &mut self.store.session_store,
             &mut self.store.identity_store,
             &their_pre_key_bundle,
+            SystemTime::UNIX_EPOCH,
             rng,
-            None,
         )
         .await
         .unwrap();
@@ -103,18 +106,18 @@ impl Participant {
 
     async fn send_message(&mut self, them: &mut Self, rng: &mut (impl Rng + CryptoRng)) {
         info!("{}: sending message", self.name);
-        if self
+        if !self
             .store
-            .load_session(&them.address, None)
+            .load_session(&them.address)
             .await
             .unwrap()
-            .map(|session| !session.has_current_session_state())
-            .unwrap_or(true)
+            .and_then(|session| session.has_usable_sender_chain(SystemTime::UNIX_EPOCH).ok())
+            .unwrap_or(false)
         {
             self.process_pre_key(them, rng.gen_bool(0.75), rng).await;
         }
 
-        let length = rng.gen_range(0, 140);
+        let length = rng.gen_range(0..140);
         let mut buffer = vec![0; length];
         rng.fill_bytes(&mut buffer);
 
@@ -123,7 +126,7 @@ impl Participant {
             &them.address,
             &mut self.store.session_store,
             &mut self.store.identity_store,
-            None,
+            SystemTime::UNIX_EPOCH,
         )
         .await
         .unwrap();
@@ -156,8 +159,8 @@ impl Participant {
                 &mut self.store.identity_store,
                 &mut self.store.pre_key_store,
                 &mut self.store.signed_pre_key_store,
+                &mut self.store.kyber_pre_key_store,
                 rng,
-                None,
             )
             .await
             .unwrap();
@@ -167,11 +170,11 @@ impl Participant {
     }
 
     async fn archive_session(&mut self, their_address: &ProtocolAddress) {
-        if let Some(mut session) = self.store.load_session(their_address, None).await.unwrap() {
+        if let Some(mut session) = self.store.load_session(their_address).await.unwrap() {
             info!("{}: archiving session", self.name);
             session.archive_current_state().unwrap();
             self.store
-                .store_session(their_address, &session, None)
+                .store_session(their_address, &session)
                 .await
                 .unwrap();
             self.archive_count += 1;
@@ -196,6 +199,7 @@ fuzz_target!(|data: (u64, &[u8])| {
             .unwrap(),
             message_queue: Vec::new(),
             archive_count: 0,
+            pre_key_count: 0,
         };
         let mut bob = Participant {
             name: "bob",
@@ -207,6 +211,7 @@ fuzz_target!(|data: (u64, &[u8])| {
             .unwrap(),
             message_queue: Vec::new(),
             archive_count: 0,
+            pre_key_count: 0,
         };
 
         for action in actions {
@@ -217,10 +222,20 @@ fuzz_target!(|data: (u64, &[u8])| {
             };
             match action >> 1 {
                 0 => {
-                    if me.archive_count < 40 {
+                    let mut estimated_prev_states = 0;
+                    // The set of previous session states grows in two ways:
+                    // 1) The current session state of "me" is archived explicitly.
+                    estimated_prev_states += me.archive_count;
+                    // 2) A pre-key message is received from "them" and displaces the
+                    //    current session state. They may send one pre-key message initially.
+                    //    Additional pre-key messages from "them" follow explicit archiving.
+                    estimated_prev_states += 1 + them.archive_count;
+                    if estimated_prev_states < 40 {
                         // Only archive if it can't result in old sessions getting expired.
                         // We're not testing that.
                         me.archive_session(&them.address).await
+                    } else {
+                        info!("{}: archiving LIMITED at {}/{}", me.name, me.archive_count, them.archive_count);
                     }
                 }
                 1..=32 => me.receive_messages(&them.address, &mut csprng).await,

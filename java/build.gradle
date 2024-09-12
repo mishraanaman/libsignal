@@ -1,16 +1,20 @@
 plugins {
-    id "de.undercouch.download" version "5.0.2"
+    id "base"
+    id "signing"
+    id "com.diffplug.spotless" version "6.20.0"
+    id "io.github.gradle-nexus.publish-plugin" version "1.3.0"
 }
 
-def version_number = "0.23.0"
+allprojects {
+    version = "0.57.0"
+    group   = "org.signal"
+}
 
 subprojects {
-    ext.version_number     = version_number
-    ext.group_info         = "org.signal"
-
     if (JavaVersion.current().isJava8Compatible()) {
         allprojects {
             tasks.withType(Javadoc) {
+                options.encoding = 'UTF-8'
                 options.addStringOption('Xdoclint:none', '-quiet')
             }
         }
@@ -18,7 +22,26 @@ subprojects {
 
     allprojects {
         tasks.withType(JavaCompile) {
+            options.encoding = 'UTF-8'
             options.compilerArgs += ["-Xlint:deprecation", "-Xlint:fallthrough", "-Xlint:unchecked"]
+        }
+        tasks.withType(AbstractArchiveTask) {
+            preserveFileTimestamps = false
+            reproducibleFileOrder = true
+        }
+    }
+
+    apply plugin: "com.diffplug.spotless"
+    spotless {
+        java {
+            target('**/*.java')
+            targetExclude('**/Native.java', '**/NativeTesting.java')
+            importOrder()
+            removeUnusedImports()
+
+            googleJavaFormat()
+            formatAnnotations()
+            licenseHeaderFile rootProject.file('license_header.txt')
         }
     }
 }
@@ -27,8 +50,19 @@ task makeJniLibrariesDesktop(type:Exec) {
   group 'Rust'
   description 'Build the JNI libraries'
 
+  def debugLevelLogsFlag = hasProperty('debugLevelLogs') ? ['--debug-level-logs'] : []
   // Explicitly specify 'bash' for Windows compatibility.
-  commandLine 'bash', './build_jni.sh', 'desktop'
+  commandLine 'bash', './build_jni.sh', *debugLevelLogsFlag, 'desktop'
+}
+
+task makeJniLibrariesServer(type:Exec) {
+  group 'Rust'
+  description 'Build the JNI libraries'
+
+  def debugLevelLogsFlag = hasProperty('debugLevelLogs') ? ['--debug-level-logs'] : []
+  def target = project.hasProperty('crossCompileServer') ? 'server-all' : 'server'
+
+  commandLine 'bash', './build_jni.sh', *debugLevelLogsFlag, target
 }
 
 task cargoClean(type:Exec) {
@@ -36,46 +70,45 @@ task cargoClean(type:Exec) {
   commandLine 'cargo', 'clean'
 }
 
-task clean(type: Delete) {
+task cleanJni(type: Delete) {
   description 'Clean JNI libs'
   delete fileTree('./android/src/main/jniLibs') {
     include '**/*.so'
   }
-  delete fileTree('./shared/resources') {
+  delete fileTree('./client/src/main/resources') {
+    include '**/*.so'
+    include '**/*.dylib'
+    include '**/*.dll'
+  }
+  delete fileTree('./server/src/main/resources') {
     include '**/*.so'
     include '**/*.dylib'
     include '**/*.dll'
   }
 }
-clean.dependsOn(cargoClean)
 
-task downloadNonLinuxLibraries(type: Download) {
-  // Must be explicitly enabled.
-  enabled false
-
-  def extraResources = ['signal_jni.dll', 'libsignal_jni.dylib']
-
-  src(extraResources.collect {
-    'https://github.com/signalapp/libsignal/releases/download/v' + version_number + '/' + it
-  })
-  dest 'shared/resources'
-}
+clean.dependsOn([cargoClean, cleanJni])
 
 // PUBLISHING
 
+ext.setUpSigningKey = { signingExt ->
+    def signingKeyId = findProperty("signingKeyId")
+    def signingKey = findProperty("signingKey")
+    def signingPassword = findProperty("signingPassword")
+    if (signingKeyId && signingKey && signingPassword) {
+        signingExt.useInMemoryPgpKeys(signingKeyId.trim(), signingKey.trim(), signingPassword.trim())
+    }
+}
+
+nexusPublishing {
+    repositories {
+        sonatype {
+            username = project.findProperty('sonatypeUsername') ?: ""
+            password = project.findProperty('sonatypePassword') ?: ""
+        }
+    }
+}
+
 def isReleaseBuild() {
     return version.contains("SNAPSHOT") == false
-}
-
-def getReleaseRepositoryUrl() {
-    return hasProperty('sonatypeRepo') ? sonatypeRepo
-            : "https://oss.sonatype.org/service/local/staging/deploy/maven2/"
-}
-
-def getRepositoryUsername() {
-    return hasProperty('sonatypeUsername') ? sonatypeUsername : ""
-}
-
-def getRepositoryPassword() {
-    return hasProperty('sonatypePassword') ? sonatypePassword : ""
 }

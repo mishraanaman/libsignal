@@ -5,13 +5,17 @@
 
 package org.signal.libsignal.zkgroup.calllinks;
 
+import static org.signal.libsignal.internal.FilterExceptions.filterExceptions;
+
+import org.signal.libsignal.internal.Native;
 import org.signal.libsignal.zkgroup.InvalidInputException;
 import org.signal.libsignal.zkgroup.internal.ByteArray;
-import org.signal.libsignal.internal.Native;
 
 public final class CallLinkPublicParams extends ByteArray {
   public CallLinkPublicParams(byte[] contents) throws InvalidInputException {
     super(contents);
-    Native.CallLinkPublicParams_CheckValidContents(contents);
+    filterExceptions(
+        InvalidInputException.class,
+        () -> Native.CallLinkPublicParams_CheckValidContents(contents));
   }
 }

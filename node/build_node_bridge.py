@@ -5,15 +5,45 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 #
 
+import hashlib
 import optparse
-import sys
-import subprocess
 import os
-import shutil
 import shlex
+import shutil
+import subprocess
+import sys
+
+from typing import List, Optional
 
 
-def main(args=None):
+def maybe_dump_debug_symbols(*, src_path: str, src_checksum_path: str, dst_path: str, dst_checksum_path: str) -> None:
+    dump_syms = shutil.which('dump_syms')
+    if not dump_syms:
+        print("note: dump_syms not installed; skipping debug info processing")
+        return
+
+    with open(src_checksum_path, 'rb') as f:
+        digest = hashlib.sha256()
+        # Use read1 to use the file object's buffering.
+        # We don't want to load the entire input in memory if we can help it.
+        while next := f.read1():
+            digest.update(next)
+        checksum = digest.hexdigest()
+
+    if os.path.exists(dst_checksum_path):
+        with open(dst_checksum_path, 'r') as f:
+            if f.read() == checksum:
+                print("Debug info did not change")
+                return
+
+    with open(dst_checksum_path, 'w') as f:
+        f.write(checksum)
+
+    print("Dumping debug symbols to %s" % dst_path)
+    subprocess.check_call([dump_syms, src_path, '-o', dst_path])
+
+
+def main(args: Optional[List[str]] = None) -> int:
     if args is None:
         args = sys.argv
 
@@ -63,23 +93,44 @@ def main(args=None):
 
     out_dir = options.out_dir.strip('"') or os.path.join('build', configuration_name)
 
-    cmdline = ['cargo', 'build', '--target', cargo_target, '-p', 'libsignal-node']
+    features = []
+    if 'npm_config_libsignal_debug_level_logs' not in os.environ:
+        features.append('log/release_max_level_info')
+
+    cmdline = ['cargo', 'build', '--target', cargo_target, '-p', 'libsignal-node', '--features', ','.join(features)]
     if configuration_name == 'Release':
         cmdline.append('--release')
     print("Running '%s'" % (' '.join(cmdline)))
 
     cargo_env = os.environ.copy()
+    cargo_env['RUSTFLAGS'] = cargo_env.get('RUSTFLAGS') or ''
     cargo_env['CARGO_BUILD_TARGET_DIR'] = options.cargo_build_dir
+    cargo_env['MACOSX_DEPLOYMENT_TARGET'] = '10.13'
+    # Build with debug line tables, but not full debug info.
+    cargo_env['CARGO_PROFILE_RELEASE_DEBUG'] = '1'
     # On Linux, cdylibs don't include public symbols from their dependencies,
     # even if those symbols have been re-exported in the Rust source.
     # Using LTO works around this at the cost of a slightly slower build.
     # https://github.com/rust-lang/rfcs/issues/2771
     cargo_env['CARGO_PROFILE_RELEASE_LTO'] = 'thin'
+    # Enable ARMv8 cryptography acceleration when available
+    cargo_env['RUSTFLAGS'] += ' --cfg aes_armv8 --cfg polyval_armv8'
+
+    # If set (below), will post-process the build library using this instead of just `cp`-ing it.
+    objcopy = None
 
     if node_os_name == 'win32':
         # By default, Rust on Windows depends on an MSVC component for the C runtime.
         # Link it statically to avoid propagating that dependency.
-        cargo_env['RUSTFLAGS'] = '-C target-feature=+crt-static'
+        cargo_env['RUSTFLAGS'] += ' -C target-feature=+crt-static'
+
+        # Save the debug info in PDB format...
+        cargo_env['CARGO_PROFILE_RELEASE_SPLIT_DEBUGINFO'] = 'packed'
+        # ...and DLLs don't have anything to strip.
+        # (If you turn on stripping the PDB doesn't get generated at all.)
+        lib_format = '{}.dll'
+        debug_format = '{}.pdb'
+        debug_format_for_checksum = debug_format
 
         abs_build_dir = os.path.abspath(options.cargo_build_dir)
         if 'GITHUB_WORKSPACE' in cargo_env:
@@ -96,31 +147,61 @@ def main(args=None):
             if len(tmpdir) < len(abs_build_dir):
                 cargo_env['CARGO_BUILD_TARGET_DIR'] = os.path.join(tmpdir, "libsignal")
 
-    cmd = subprocess.Popen(cmdline, env=cargo_env)
-    cmd.wait()
+    elif node_os_name == 'darwin':
+        # Save the debug info in dSYM format...
+        cargo_env['CARGO_PROFILE_RELEASE_SPLIT_DEBUGINFO'] = 'packed'
+        # ...then have Rust strip the library.
+        cargo_env['CARGO_PROFILE_RELEASE_STRIP'] = 'symbols'
+        lib_format = 'lib{0}.dylib'
+        debug_format = 'lib{0}.dylib.dSYM'
+        # The dSYM format is a directory, not a single file.
+        # We use the single file that contains the DWARF information for our checksum,
+        # since our primary purpose for debug info is symbolicating crashdumps,
+        # which uses the line tables stored as DWARF.
+        debug_format_for_checksum = os.path.join(debug_format, 'Contents', 'Resources', 'DWARF', lib_format)
 
-    if cmd.returncode != 0:
-        print('ERROR: cargo failed')
-        return 1
+        # macOS has a nice place for us to stash our version number.
+        if 'npm_package_version' in cargo_env:
+            cargo_env['RUSTFLAGS'] += ' -Clink-arg=-Wl,-current_version,%s' % cargo_env['npm_package_version']
+
+    else:
+        # Assume Linux-like.
+        # DWP files don't seem ready for everyday use.
+        # We'll just save the whole unstripped binary.
+        lib_format = 'lib{}.so'
+        debug_format = 'lib{}.so'
+        debug_format_for_checksum = debug_format
+
+        objcopy = shutil.which('%s-linux-gnu-objcopy' % cargo_target.split('-')[0]) or 'objcopy'
+
+    print("with environment: %s" % (' '.join("%s=%s" % (k, v) for (k, v) in cargo_env.items())))
+    subprocess.check_call(cmdline, env=cargo_env)
 
     libs_in = os.path.join(cargo_env['CARGO_BUILD_TARGET_DIR'],
                            cargo_target,
                            configuration_name.lower())
 
-    found_a_lib = False
-    for lib_format in ['%s.dll', 'lib%s.so', 'lib%s.dylib']:
-        src_path = os.path.join(libs_in, lib_format % 'signal_node')
-        if os.access(src_path, os.R_OK):
-            dst_path = os.path.join(out_dir, 'libsignal_client_%s_%s.node' % (node_os_name, node_arch))
-            print("Copying %s to %s" % (src_path, dst_path))
-            if not os.path.exists(out_dir):
-                os.makedirs(out_dir)
-            shutil.copyfile(src_path, dst_path)
-            found_a_lib = True
-            break
+    src_path = os.path.join(libs_in, lib_format.format('signal_node'))
+    if os.access(src_path, os.R_OK):
+        dst_base = 'libsignal_client_%s_%s' % (node_os_name, node_arch)
 
-    if not found_a_lib:
-        print("ERROR did not find generated library")
+        dst_path = os.path.join(out_dir, dst_base + '.node')
+        print("Copying %s to %s" % (src_path, dst_path))
+        if not os.path.exists(out_dir):
+            os.makedirs(out_dir)
+        if objcopy:
+            subprocess.check_call([objcopy, '-S', src_path, dst_path])
+        else:
+            shutil.copyfile(src_path, dst_path)
+
+        maybe_dump_debug_symbols(
+            src_path=os.path.join(libs_in, debug_format.format('signal_node')),
+            src_checksum_path=os.path.join(libs_in, debug_format_for_checksum.format('signal_node')),
+            dst_path=os.path.join(out_dir, dst_base + '-debuginfo.sym'),
+            dst_checksum_path=os.path.join(out_dir, dst_base + '-debuginfo.sha256'),
+        )
+    else:
+        print("ERROR: did not find generated library")
         return 1
 
     return 0

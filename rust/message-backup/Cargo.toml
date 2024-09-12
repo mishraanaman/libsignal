@@ -1,0 +1,85 @@
+#
+# Copyright (C) 2023 Signal Messenger, LLC.
+# SPDX-License-Identifier: AGPL-3.0-only
+#
+[package]
+name = "libsignal-message-backup"
+version = "0.1.0"
+edition = "2021"
+authors = ["Signal Messenger LLC"]
+license = "AGPL-3.0-only"
+
+[features]
+# Enables code to allow conversion of backups to and from JSON.
+json = ["dep:serde_json", "dep:protobuf-json-mapping"]
+
+[[example]]
+name = "json_to_binproto"
+required-features = ["json"]
+
+[[example]]
+name = "binproto_to_json"
+required-features = ["json"]
+
+[dependencies]
+libsignal-core = { path = "../core" }
+libsignal-message-backup-macros = { path = "macros" }
+signal-crypto = { path = "../crypto" }
+usernames = { path = "../usernames" }
+zkcredential = { path = "../zkcredential", features = ["rayon"] }
+zkgroup = { path = "../zkgroup" }
+
+aes = { workspace = true }
+arrayvec = { workspace = true }
+async-compression = { version = "0.4.5", features = ["futures-io", "gzip"] }
+async-trait = { workspace = true }
+cbc = { workspace = true }
+clap = { workspace = true, features = ["derive"] }
+clap-stdin = "0.3.0"
+derive-where = { workspace = true }
+displaydoc = { workspace = true }
+env_logger = { workspace = true }
+futures = { workspace = true }
+hex = { workspace = true, features = ["serde"] }
+hkdf = { workspace = true }
+hmac = { workspace = true }
+itertools = { workspace = true }
+log = { workspace = true }
+macro_rules_attribute = "0.2.0"
+mediasan-common = { workspace = true }
+num_enum = { workspace = true }
+protobuf = "3.3.0"
+protobuf-json-mapping = { version = "3.3.0", optional = true }
+serde = { workspace = true, features = ["derive", "rc"] }
+serde_json = { workspace = true, optional = true, features = ["preserve_order"] }
+sha2 = { workspace = true }
+strum = { workspace = true, features = ["derive"] }
+# This isn't strictly necessary but we need at least this version to avoid
+# warnings from the latest nightly rustc. Remove this when the referenced strum
+# version has at least this version as a dependency.
+strum_macros = { version = "0.26.4" }
+subtle = { workspace = true }
+thiserror = { workspace = true }
+uuid = { workspace = true, features = ["serde"] }
+
+[dev-dependencies]
+libsignal-message-backup = { path = "./", features = ["json"] }
+signal-crypto = { path = "../crypto" }
+
+array-concat = { workspace = true }
+assert_cmd = "2.0.13"
+assert_matches = { workspace = true }
+dir-test = "0.2.0"
+futures = { workspace = true, features = ["executor"] }
+hex-literal = { workspace = true }
+json5 = "0.4.1"
+nonzero_ext = { workspace = true }
+once_cell = { workspace = true }
+test-case = { workspace = true }
+test-log = "0.2.14"
+testing_logger = { workspace = true }
+pretty_assertions = "1.4.0"
+
+[build-dependencies]
+protobuf = "3.3.0"
+protobuf-codegen = "3.3.0"

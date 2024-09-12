@@ -22,19 +22,18 @@
 // Curve signing key, using the NIST p-256 curve.
 
 use std::collections::HashMap;
-use std::convert::{TryFrom, TryInto};
 use std::time::SystemTime;
 
-use boring::asn1::{Asn1Time, Asn1TimeRef};
-use boring::bn::BigNumContext;
-use boring::ec::*;
-use boring::error::ErrorStack;
-use boring::nid::Nid;
-use boring::pkey::{PKey, PKeyRef, Public};
-use boring::x509::crl::X509CRLRef;
-use boring::x509::store::{X509Store, X509StoreBuilder};
-use boring::x509::verify::X509VerifyFlags;
-use boring::x509::{X509Ref, X509VerifyResult, X509};
+use boring_signal::asn1::{Asn1Time, Asn1TimeRef};
+use boring_signal::bn::BigNumContext;
+use boring_signal::ec::*;
+use boring_signal::error::ErrorStack;
+use boring_signal::nid::Nid;
+use boring_signal::pkey::{PKey, PKeyRef, Public};
+use boring_signal::x509::crl::X509CRLRef;
+use boring_signal::x509::store::{X509Store, X509StoreBuilder};
+use boring_signal::x509::verify::X509VerifyFlags;
+use boring_signal::x509::{X509Ref, X509};
 use hex::ToHex;
 use lazy_static::lazy_static;
 use uuid::Uuid;
@@ -47,9 +46,10 @@ use crate::dcap::evidence::Evidence;
 pub use crate::dcap::sgx_report_body::MREnclave;
 use crate::dcap::sgx_report_body::SgxFlags;
 use crate::dcap::sgx_x509::SgxPckExtension;
+use crate::enclave::AttestationError;
 use crate::error::{Context, ContextError};
+use crate::expireable::Expireable;
 
-pub(crate) mod cert_chain;
 mod ecdsa;
 mod endorsements;
 mod evidence;
@@ -61,35 +61,10 @@ mod sgx_x509;
 #[cfg(test)]
 mod fakes;
 
-#[derive(Debug)]
-pub struct AttestationError {
-    message: String,
-}
-
-impl std::fmt::Display for AttestationError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        self.message.fmt(f)
-    }
-}
-
-impl std::error::Error for AttestationError {}
-
-impl From<Error> for AttestationError {
-    fn from(e: Error) -> Self {
-        Self {
-            message: e.to_string(),
-        }
-    }
-}
-
 pub(crate) struct DcapErrorDomain;
 pub(crate) type Error = ContextError<DcapErrorDomain>;
 
 type Result<T> = std::result::Result<T, Error>;
-
-pub(crate) trait Expireable {
-    fn valid_at(&self, timestamp: SystemTime) -> bool;
-}
 
 /// Intel public key that signs all root certificates for DCAP
 const INTEL_ROOT_PUB_KEY: &[u8] = &[
@@ -359,7 +334,7 @@ fn root_trust_store(
     current_time: SystemTime,
 ) -> Result<X509Store> {
     // should be self issued
-    if X509VerifyResult::OK != root_ca.issued(root_ca) {
+    if root_ca.issued(root_ca).is_err() {
         return Err(Error::new("Invalid root certificate (not self signed)"));
     }
 
@@ -458,7 +433,7 @@ fn verify_enclave_source(evidence: &Evidence, endorsements: &SgxEndorsements) ->
     }
 
     // compare isvprodid in report vs collateral
-    let report_isvprodid = evidence.quote.support.qe_report_body.isvprodid.value();
+    let report_isvprodid = evidence.quote.support.qe_report_body.isvprodid.get();
     let collateral_isvprodid = qe_identity.isvprodid;
     if report_isvprodid != collateral_isvprodid {
         return Err(Error::new(format!(
@@ -468,9 +443,8 @@ fn verify_enclave_source(evidence: &Evidence, endorsements: &SgxEndorsements) ->
     }
 
     // compare miscselect from QE identity and masked miscselect from quote’s QE report
-    let qe_report_miscselect = evidence.quote.support.qe_report_body.miscselect.value();
-    if qe_report_miscselect & qe_identity.miscselect_mask.value() != qe_identity.miscselect.value()
-    {
+    let qe_report_miscselect = evidence.quote.support.qe_report_body.miscselect.get();
+    if qe_report_miscselect & qe_identity.miscselect_mask.get() != qe_identity.miscselect.get() {
         return Err(Error::new("qe miscselect mismatch"));
     }
 
@@ -500,7 +474,7 @@ fn verify_enclave_source(evidence: &Evidence, endorsements: &SgxEndorsements) ->
     // Later, we will also lookup the tcb status in the TcbInfo but if
     // the Enclave Identity tcb status isn't up to date, we can fail right
     // away
-    let report_isvsvn = evidence.quote.support.qe_report_body.isvsvn.value();
+    let report_isvsvn = evidence.quote.support.qe_report_body.isvsvn.get();
     let tcb_status = qe_identity.tcb_status(report_isvsvn);
     if tcb_status != &QeTcbStatus::UpToDate {
         return Err(Error::new(format!(
@@ -673,16 +647,15 @@ impl TcbStanding {
 
 #[cfg(test)]
 mod test {
-    use std::convert::TryInto;
+
     use std::time::{Duration, SystemTime};
 
-    use crate::dcap::endorsements::{QeTcbLevel, TcbInfoVersion};
-    use crate::dcap::fakes::FakeAttestation;
-    use crate::util::testio::read_test_file;
-    use boring::bn::BigNum;
+    use boring_signal::bn::BigNum;
     use hex_literal::hex;
 
     use super::*;
+    use crate::dcap::endorsements::{QeTcbLevel, TcbInfoVersion};
+    use crate::dcap::fakes::FakeAttestation;
 
     const EXPECTED_MRENCLAVE: MREnclave =
         hex!("337ac97ce088a132daeb1308ea3159f807de4a827e875b2c90ce21bf4751196f");
@@ -694,8 +667,8 @@ mod test {
         let current_time: SystemTime =
             SystemTime::UNIX_EPOCH + Duration::from_millis(1674105089000);
 
-        let evidence_bytes = read_test_file("tests/data/dcap.evidence");
-        let endorsements_bytes = read_test_file("tests/data/dcap.endorsements");
+        let evidence_bytes = include_bytes!("../tests/data/dcap.evidence");
+        let endorsements_bytes = include_bytes!("../tests/data/dcap.endorsements");
 
         let pubkey = verify_remote_attestation(
             evidence_bytes.as_ref(),
@@ -709,7 +682,7 @@ mod test {
         .unwrap()
         .to_owned();
 
-        let expected_pubkey = hex::decode(read_test_file("tests/data/dcap.pubkey")).unwrap();
+        let expected_pubkey = hex::decode(include_bytes!("../tests/data/dcap.pubkey")).unwrap();
         assert_eq!(&expected_pubkey, pubkey.as_slice());
     }
 
@@ -720,8 +693,8 @@ mod test {
         let current_time: SystemTime =
             SystemTime::UNIX_EPOCH + Duration::from_millis(1657856984000);
 
-        let evidence_bytes = read_test_file("tests/data/dcap_v3.evidence");
-        let endorsements_bytes = read_test_file("tests/data/dcap_v3.endorsements");
+        let evidence_bytes = include_bytes!("../tests/data/dcap_v3.evidence");
+        let endorsements_bytes = include_bytes!("../tests/data/dcap_v3.endorsements");
 
         let pubkey = verify_remote_attestation(
             evidence_bytes.as_ref(),
@@ -735,7 +708,7 @@ mod test {
         .unwrap()
         .to_owned();
 
-        let expected_pubkey = hex::decode(read_test_file("tests/data/dcap_v3.pubkey")).unwrap();
+        let expected_pubkey = hex::decode(include_bytes!("../tests/data/dcap_v3.pubkey")).unwrap();
         assert_eq!(&expected_pubkey, pubkey.as_slice());
     }
 
@@ -744,8 +717,8 @@ mod test {
         let current_time: SystemTime =
             SystemTime::UNIX_EPOCH + Duration::from_millis(1674105089000);
 
-        let evidence_bytes = read_test_file("tests/data/dcap.evidence");
-        let endorsements_bytes = read_test_file("tests/data/dcap.endorsements");
+        let evidence_bytes = include_bytes!("../tests/data/dcap.evidence");
+        let endorsements_bytes = include_bytes!("../tests/data/dcap.endorsements");
 
         let sw_advisories = &[ACCEPTED_SW_ADVISORIES, &["INTEL-SA-1234"]].concat();
 
@@ -761,15 +734,15 @@ mod test {
         .unwrap()
         .to_owned();
 
-        let expected_pubkey = hex::decode(read_test_file("tests/data/dcap.pubkey")).unwrap();
+        let expected_pubkey = hex::decode(include_bytes!("../tests/data/dcap.pubkey")).unwrap();
         assert_eq!(expected_pubkey, pubkey.as_slice());
     }
 
     #[test]
     fn test_attestation_metrics() {
-        let evidence_bytes = read_test_file("tests/data/dcap.evidence");
-        let endorsements_bytes = read_test_file("tests/data/dcap.endorsements");
-        let metrics = attestation_metrics(&evidence_bytes, &endorsements_bytes).unwrap();
+        const EVIDENCE_BYTES: &[u8] = include_bytes!("../tests/data/dcap.evidence");
+        const ENDORSEMENTS_BYTES: &[u8] = include_bytes!("../tests/data/dcap.endorsements");
+        let metrics = attestation_metrics(EVIDENCE_BYTES, ENDORSEMENTS_BYTES).unwrap();
         // 2023-02-17 21:56:09 UTC
         assert_eq!(
             *metrics.get("tcb_info_expiration_ts").unwrap(),
@@ -792,8 +765,8 @@ mod test {
         let current_time: SystemTime =
             SystemTime::UNIX_EPOCH + Duration::from_millis(1652744306000);
 
-        let evidence_bytes = read_test_file("tests/data/dcap-expired.evidence");
-        let endorsements_bytes = read_test_file("tests/data/dcap-expired.endorsements");
+        let evidence_bytes = include_bytes!("../tests/data/dcap-expired.evidence");
+        let endorsements_bytes = include_bytes!("../tests/data/dcap-expired.endorsements");
 
         assert!(verify_remote_attestation(
             evidence_bytes.as_ref(),

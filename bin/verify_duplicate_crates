@@ -5,46 +5,31 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 #
 
-# For now, these dependencies have conflicting requirements.
+# To keep code size down, we try to avoid depending on multiple versions of crates.
+#
+# Sometimes we decide it's okay for certain dependencies.
 # You can use the `cargo tree` command below to see where they come from,
 # and then document them here.
 #
-# getrandom + rand*:
-#   curve25519-dalek + x25519-dalek use rand_core 0.5, snow and picky use rand_core 0.6
-# serde:
-#   num_enum_derive indirectly uses serde in a proc-macro;
-#   unfortunately that shows up as a repeat here
-# block-buffer + digest:
-#  argon2 uses digest 0.10, all of the other rust-crypto dependencies are still based
-#  on digest 0.9. 
-# syn:
-#  syn is used in proc-macros only, so it isn't going to cost us in code size.
-EXPECTED="\
-block-buffer v0.9.0
+# jni: v0.19 is used by rustls-platform-verifier on Android, v0.21 by us
+# pqcrypto-kyber: v0.7 is what we shipped PQXDH on, v0.8 contains the NIST standard version
+EXPECTED="
+jni v0.19.0
+jni v0.21.1
+pqcrypto-kyber v0.7.9
+pqcrypto-kyber v0.8.1"
 
-block-buffer v0.10.4
+check_cargo_tree() {
+    # Only check the mobile targets, where we care most about code size.
+    cargo tree --quiet --duplicates --edges normal,no-proc-macro \
+        --workspace --all-features --locked \
+        --target aarch64-apple-ios \
+        --target armv7-linux-androideabi \
+        --target aarch64-linux-android \
+        "$@"
+}
 
-digest v0.9.0
-
-digest v0.10.6
-
-getrandom v0.1.16
-
-getrandom v0.2.5
-
-rand_core v0.5.1
-
-rand_core v0.6.4
-
-serde v1.0.136
-
-serde v1.0.136
-
-syn v1.0.109
-
-syn v2.0.15"
-
-if [[ "$(cargo tree -d -e normal --workspace --locked --depth 0)" != "${EXPECTED}" ]]; then
-    cargo tree -d -e normal --workspace --locked
+if [[ "$(check_cargo_tree --depth 0 | sort -u -V)" != "${EXPECTED}" ]]; then
+    check_cargo_tree
     exit 1
 fi

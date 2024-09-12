@@ -5,21 +5,31 @@
 
 package org.signal.libsignal.cds2;
 
-import org.signal.libsignal.sgxsession.SgxClient;
-import org.signal.libsignal.attest.AttestationDataException;
-import org.signal.libsignal.internal.Native;
+import static org.signal.libsignal.internal.FilterExceptions.filterExceptions;
 
 import java.time.Instant;
+import org.signal.libsignal.attest.AttestationDataException;
+import org.signal.libsignal.attest.AttestationFailedException;
+import org.signal.libsignal.internal.Native;
+import org.signal.libsignal.sgxsession.SgxClient;
 
 /**
- * Cds2Client provides bindings to interact with Signal's v2 Contact Discovery Service. <p>
+ * Cds2Client provides bindings to interact with Signal's v2 Contact Discovery Service.
  *
- * {@inheritDoc}
+ * <p>{@inheritDoc}
  *
- * A future update to Cds2Client will implement additional parts of the contact discovery protocol.
+ * <p>A future update to Cds2Client will implement additional parts of the contact discovery
+ * protocol.
  */
 public class Cds2Client extends SgxClient {
-  public Cds2Client(byte[] mrenclave, byte[] attestationMsg, Instant currentInstant) throws AttestationDataException {
-    super(Native.Cds2ClientState_New(mrenclave, attestationMsg, currentInstant.toEpochMilli()));
+  public Cds2Client(byte[] mrenclave, byte[] attestationMsg, Instant currentInstant)
+      throws AttestationDataException, AttestationFailedException {
+    super(
+        filterExceptions(
+            AttestationDataException.class,
+            AttestationFailedException.class,
+            () ->
+                Native.Cds2ClientState_New(
+                    mrenclave, attestationMsg, currentInstant.toEpochMilli())));
   }
 }

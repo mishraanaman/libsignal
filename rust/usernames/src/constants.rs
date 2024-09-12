@@ -10,8 +10,9 @@ use lazy_static::lazy_static;
 lazy_static! {
     pub(crate) static ref BASE_POINTS: [RistrettoPoint; 3] =
         COMPRESSED_BASE_POINTS_RAW.map(|bytes| {
-            let compressed = CompressedRistretto::from_slice(&bytes);
-            compressed.decompress().unwrap()
+            let compressed = CompressedRistretto::from_slice(&bytes)
+                .expect("can create compressed ristretto from bytes");
+            compressed.decompress().expect("can decompress ristretto")
         });
 }
 
@@ -33,7 +34,7 @@ const COMPRESSED_BASE_POINTS_RAW: [[u8; 32]; 3] = [
     ],
 ];
 
-// 37^48 will overflow the Scalar. See nickname_scalar implementation for details.
+// Going past 37^48 will overflow the Scalar. See nickname_scalar implementation for details.
 pub(crate) const MAX_NICKNAME_LENGTH: usize = 48;
 pub(crate) const DISCRIMINATOR_RANGES: [Range<usize>; 8] = [
     1..100,
@@ -47,6 +48,15 @@ pub(crate) const DISCRIMINATOR_RANGES: [Range<usize>; 8] = [
 ];
 
 pub(crate) const CANDIDATES_PER_RANGE: [usize; 8] = [4, 3, 3, 2, 2, 2, 2, 2];
+
+pub const USERNAME_LINK_ENTROPY_SIZE: usize = 32;
+
+pub(crate) const USERNAME_LINK_LABEL_ENCRYPTION_KEY: &[u8] = b"Signal Username Link Encryption Key";
+pub(crate) const USERNAME_LINK_LABEL_AUTHENTICATION_KEY: &[u8] =
+    b"Signal Username Link Authentication Key";
+pub(crate) const USERNAME_LINK_HMAC_LEN: usize = 32;
+pub(crate) const USERNAME_LINK_KEY_SIZE: usize = 32;
+pub(crate) const USERNAME_LINK_IV_SIZE: usize = 16;
 
 #[cfg(test)]
 mod test {

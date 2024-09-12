@@ -1,16 +1,23 @@
-/**
- * Copyright (C) 2014-2016 Open Whisper Systems
- *
- * Licensed according to the LICENSE file in this repository.
- */
+//
+// Copyright 2014-2016 Signal Messenger, LLC.
+// SPDX-License-Identifier: AGPL-3.0-only
+//
+
 package org.signal.libsignal.protocol;
 
 public class NoSessionException extends Exception {
-  public NoSessionException(String s) {
-    super(s);
+  private final SignalProtocolAddress address;
+
+  public NoSessionException(String message) {
+    this(null, message);
   }
 
-  public NoSessionException(Exception nested) {
-    super(nested);
+  public NoSessionException(SignalProtocolAddress address, String message) {
+    super(message);
+    this.address = address;
+  }
+
+  public SignalProtocolAddress getAddress() {
+    return address;
   }
 }

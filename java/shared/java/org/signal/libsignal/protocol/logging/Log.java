@@ -1,13 +1,14 @@
-/**
- * Copyright (C) 2014-2016 Open Whisper Systems
- *
- * Licensed according to the LICENSE file in this repository.
- */
+//
+// Copyright 2014-2016 Signal Messenger, LLC.
+// SPDX-License-Identifier: AGPL-3.0-only
+//
+
 package org.signal.libsignal.protocol.logging;
 
 import java.io.PrintWriter;
 import java.io.StringWriter;
 import java.net.UnknownHostException;
+import org.signal.libsignal.internal.CalledFromNative;
 
 public class Log {
 
@@ -79,6 +80,7 @@ public class Log {
     return sw.toString();
   }
 
+  @CalledFromNative
   private static void log(int priority, String tag, String msg) {
     SignalProtocolLogger logger = SignalProtocolLoggerProvider.getProvider();
 
@@ -86,6 +88,4 @@ public class Log {
       logger.log(priority, tag, msg);
     }
   }
-
-
 }

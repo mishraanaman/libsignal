@@ -16,7 +16,7 @@ public class NativeHandleOwner {
     /// You should probably use `withNativeHandle(_:)`
     /// unless you can't use block scoping to keep the owner (`self`) alive.
     internal var unsafeNativeHandle: OpaquePointer? {
-        switch handle {
+        switch self.handle {
         case nil:
             return nil
         case .borrowed(let handle)?:
@@ -26,7 +26,7 @@ public class NativeHandleOwner {
         }
     }
 
-    required internal init(owned handle: OpaquePointer) {
+    internal required init(owned handle: OpaquePointer) {
         self.handle = .owned(handle)
     }
 
@@ -34,7 +34,7 @@ public class NativeHandleOwner {
         self.handle = handle.map { .borrowed($0) }
     }
 
-    internal class func destroyNativeHandle(_ handle: OpaquePointer) -> SignalFfiErrorRef? {
+    internal class func destroyNativeHandle(_: OpaquePointer) -> SignalFfiErrorRef? {
         fatalError("must be implemented by subclasses")
     }
 
@@ -61,7 +61,7 @@ public class NativeHandleOwner {
 }
 
 @available(*, unavailable, message: "use the method form instead")
-internal func withNativeHandle<Result>(_ a: NativeHandleOwner, _ callback: (OpaquePointer?) throws -> Result) rethrows -> Result {
+internal func withNativeHandle<Result>(_: NativeHandleOwner, _: (OpaquePointer?) throws -> Result) rethrows -> Result {
     fatalError()
 }
 
@@ -83,12 +83,24 @@ internal func withNativeHandles<Result>(_ a: NativeHandleOwner, _ b: NativeHandl
     }
 }
 
+internal func withNativeHandles<Result>(_ a: NativeHandleOwner, _ b: NativeHandleOwner, _ c: NativeHandleOwner, _ d: NativeHandleOwner, _ callback: (OpaquePointer?, OpaquePointer?, OpaquePointer?, OpaquePointer?) throws -> Result) rethrows -> Result {
+    return try a.withNativeHandle { aHandle in
+        try b.withNativeHandle { bHandle in
+            try c.withNativeHandle { cHandle in
+                try d.withNativeHandle { dHandle in
+                    try callback(aHandle, bHandle, cHandle, dHandle)
+                }
+            }
+        }
+    }
+}
+
 public class ClonableHandleOwner: NativeHandleOwner {
-    required internal init(owned handle: OpaquePointer) {
+    internal required init(owned handle: OpaquePointer) {
         super.init(owned: handle)
     }
 
-    internal override init(borrowing handle: OpaquePointer?) {
+    override internal init(borrowing handle: OpaquePointer?) {
         super.init(borrowing: handle)
     }
 

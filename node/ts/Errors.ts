@@ -17,12 +17,43 @@ export enum ErrorCode {
   InvalidSession,
   InvalidSenderKeySession,
 
-  CannotBeEmpty,
+  NicknameCannotBeEmpty,
   CannotStartWithDigit,
   MissingSeparator,
   BadNicknameCharacter,
   NicknameTooShort,
   NicknameTooLong,
+  DiscriminatorCannotBeEmpty,
+  DiscriminatorCannotBeZero,
+  DiscriminatorCannotBeSingleDigit,
+  DiscriminatorCannotHaveLeadingZeros,
+  BadDiscriminatorCharacter,
+  DiscriminatorTooLarge,
+
+  IoError,
+  CdsiInvalidToken,
+  InvalidUri,
+
+  InvalidMediaInput,
+  UnsupportedMediaInput,
+
+  InputDataTooLong,
+  InvalidEntropyDataLength,
+  InvalidUsernameLinkEncryptedData,
+
+  RateLimitedError,
+
+  SvrDataMissing,
+  SvrRequestFailed,
+  SvrRestoreFailed,
+
+  ChatServiceInactive,
+  AppExpired,
+  DeviceDelinked,
+
+  BackupValidation,
+
+  Cancelled,
 }
 
 export class LibSignalErrorBase extends Error {
@@ -108,8 +139,8 @@ export type InvalidSenderKeySessionError = LibSignalErrorCommon & {
   distributionId: string;
 };
 
-export type CannotBeEmptyError = LibSignalErrorCommon & {
-  code: ErrorCode.CannotBeEmpty;
+export type NicknameCannotBeEmptyError = LibSignalErrorCommon & {
+  code: ErrorCode.NicknameCannotBeEmpty;
 };
 export type CannotStartWithDigitError = LibSignalErrorCommon & {
   code: ErrorCode.CannotStartWithDigit;
@@ -130,6 +161,96 @@ export type NicknameTooLongError = LibSignalErrorCommon & {
   code: ErrorCode.NicknameTooLong;
 };
 
+export type DiscriminatorCannotBeEmptyError = LibSignalErrorCommon & {
+  code: ErrorCode.DiscriminatorCannotBeEmpty;
+};
+export type DiscriminatorCannotBeZeroError = LibSignalErrorCommon & {
+  code: ErrorCode.DiscriminatorCannotBeZero;
+};
+export type DiscriminatorCannotBeSingleDigitError = LibSignalErrorCommon & {
+  code: ErrorCode.DiscriminatorCannotBeSingleDigit;
+};
+export type DiscriminatorCannotHaveLeadingZerosError = LibSignalErrorCommon & {
+  code: ErrorCode.DiscriminatorCannotHaveLeadingZeros;
+};
+export type BadDiscriminatorCharacterError = LibSignalErrorCommon & {
+  code: ErrorCode.BadDiscriminatorCharacter;
+};
+export type DiscriminatorTooLargeError = LibSignalErrorCommon & {
+  code: ErrorCode.DiscriminatorTooLarge;
+};
+
+export type InputDataTooLong = LibSignalErrorCommon & {
+  code: ErrorCode.InputDataTooLong;
+};
+
+export type InvalidEntropyDataLength = LibSignalErrorCommon & {
+  code: ErrorCode.InvalidEntropyDataLength;
+};
+
+export type InvalidUsernameLinkEncryptedData = LibSignalErrorCommon & {
+  code: ErrorCode.InvalidUsernameLinkEncryptedData;
+};
+
+export type IoError = LibSignalErrorCommon & {
+  code: ErrorCode.IoError;
+};
+
+export type CdsiInvalidTokenError = LibSignalErrorCommon & {
+  code: ErrorCode.CdsiInvalidToken;
+};
+
+export type InvalidUriError = LibSignalErrorCommon & {
+  code: ErrorCode.InvalidUri;
+};
+
+export type InvalidMediaInputError = LibSignalErrorCommon & {
+  code: ErrorCode.InvalidMediaInput;
+};
+
+export type UnsupportedMediaInputError = LibSignalErrorCommon & {
+  code: ErrorCode.UnsupportedMediaInput;
+};
+
+export type RateLimitedError = LibSignalErrorBase & {
+  code: ErrorCode.RateLimitedError;
+  readonly retryAfterSecs: number;
+};
+
+export type ChatServiceInactive = LibSignalErrorBase & {
+  code: ErrorCode.ChatServiceInactive;
+};
+
+export type AppExpiredError = LibSignalErrorBase & {
+  code: ErrorCode.AppExpired;
+};
+
+export type DeviceDelinkedError = LibSignalErrorBase & {
+  code: ErrorCode.DeviceDelinked;
+};
+
+export type SvrDataMissingError = LibSignalErrorBase & {
+  code: ErrorCode.SvrDataMissing;
+};
+
+export type SvrRequestFailedError = LibSignalErrorCommon & {
+  code: ErrorCode.SvrRequestFailed;
+};
+
+export type SvrRestoreFailedError = LibSignalErrorCommon & {
+  code: ErrorCode.SvrRestoreFailed;
+  readonly triesRemaining: number;
+};
+
+export type BackupValidationError = LibSignalErrorCommon & {
+  code: ErrorCode.BackupValidation;
+  readonly unknownFields: ReadonlyArray<string>;
+};
+
+export type CancellationError = LibSignalErrorCommon & {
+  code: ErrorCode.Cancelled;
+};
+
 export type LibSignalError =
   | GenericError
   | DuplicatedMessageError
@@ -139,9 +260,30 @@ export type LibSignalError =
   | VerificationFailedError
   | InvalidSessionError
   | InvalidSenderKeySessionError
-  | CannotBeEmptyError
+  | NicknameCannotBeEmptyError
   | CannotStartWithDigitError
   | MissingSeparatorError
   | BadNicknameCharacterError
   | NicknameTooShortError
-  | NicknameTooLongError;
+  | NicknameTooLongError
+  | DiscriminatorCannotBeEmptyError
+  | DiscriminatorCannotBeZeroError
+  | DiscriminatorCannotBeSingleDigitError
+  | DiscriminatorCannotHaveLeadingZerosError
+  | BadDiscriminatorCharacterError
+  | DiscriminatorTooLargeError
+  | InputDataTooLong
+  | InvalidEntropyDataLength
+  | InvalidUsernameLinkEncryptedData
+  | IoError
+  | CdsiInvalidTokenError
+  | InvalidUriError
+  | InvalidMediaInputError
+  | SvrDataMissingError
+  | SvrRestoreFailedError
+  | SvrRequestFailedError
+  | UnsupportedMediaInputError
+  | ChatServiceInactive
+  | AppExpiredError
+  | DeviceDelinkedError
+  | CancellationError;

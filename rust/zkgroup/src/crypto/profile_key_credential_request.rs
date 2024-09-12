@@ -5,17 +5,19 @@
 
 #![allow(non_snake_case)]
 
+use curve25519_dalek_signal::constants::RISTRETTO_BASEPOINT_POINT;
+use curve25519_dalek_signal::ristretto::RistrettoPoint;
+use curve25519_dalek_signal::scalar::Scalar;
+use partial_default::PartialDefault;
+use serde::{Deserialize, Serialize};
+
 use crate::common::sho::*;
 use crate::crypto::credentials::{
     BlindedExpiringProfileKeyCredential, ExpiringProfileKeyCredential,
 };
 use crate::crypto::profile_key_struct;
-use curve25519_dalek::constants::RISTRETTO_BASEPOINT_POINT;
-use curve25519_dalek::ristretto::RistrettoPoint;
-use curve25519_dalek::scalar::Scalar;
-use serde::{Deserialize, Serialize};
 
-#[derive(Copy, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Copy, Clone, PartialEq, Eq, Serialize, Deserialize, PartialDefault)]
 pub struct KeyPair {
     // private
     pub(crate) y: Scalar,
@@ -24,12 +26,12 @@ pub struct KeyPair {
     pub(crate) Y: RistrettoPoint,
 }
 
-#[derive(Copy, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Copy, Clone, PartialEq, Eq, Serialize, Deserialize, PartialDefault)]
 pub struct PublicKey {
     pub(crate) Y: RistrettoPoint,
 }
 
-#[derive(Copy, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Copy, Clone, PartialEq, Eq, Serialize, Deserialize, PartialDefault)]
 pub struct CiphertextWithSecretNonce {
     pub(crate) r1: Scalar,
     pub(crate) r2: Scalar,
@@ -39,7 +41,7 @@ pub struct CiphertextWithSecretNonce {
     pub(crate) E2: RistrettoPoint,
 }
 
-#[derive(Copy, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Copy, Clone, PartialEq, Eq, Serialize, Deserialize, PartialDefault)]
 pub struct Ciphertext {
     pub(crate) D1: RistrettoPoint,
     pub(crate) D2: RistrettoPoint,

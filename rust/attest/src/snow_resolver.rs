@@ -3,12 +3,11 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 
-use std::convert::TryInto;
-
-use chacha20poly1305::aead::{AeadInPlace, NewAead};
-use chacha20poly1305::ChaCha20Poly1305;
+use blake2::{Blake2b, Blake2b512};
+use chacha20poly1305::{AeadInPlace, ChaCha20Poly1305, KeyInit};
 use rand_core::{CryptoRng, RngCore};
 use sha2::{Digest, Sha256};
+use snow::error::Error as SnowError;
 use snow::params::{CipherChoice, DHChoice, HashChoice};
 use snow::resolvers::CryptoResolver;
 use snow::types::{Cipher, Dh, Hash, Random};
@@ -17,6 +16,7 @@ use x25519_dalek as x25519;
 const TAGLEN: usize = 16;
 
 struct Rng<T>(T);
+
 impl<T: RngCore> RngCore for Rng<T> {
     fn next_u32(&mut self) -> u32 {
         self.0.next_u32()
@@ -36,6 +36,7 @@ impl<T: RngCore> RngCore for Rng<T> {
 }
 
 impl<T: CryptoRng> CryptoRng for Rng<T> {}
+
 impl<T: RngCore + CryptoRng + Send + Sync> Random for Rng<T> {}
 
 // From snow's resolvers/default.rs
@@ -44,6 +45,7 @@ struct Dh25519 {
     privkey: [u8; 32],
     pubkey: [u8; 32],
 }
+
 impl Dh for Dh25519 {
     fn name(&self) -> &'static str {
         "25519"
@@ -75,7 +77,7 @@ impl Dh for Dh25519 {
         &self.privkey
     }
 
-    fn dh(&self, pubkey: &[u8], out: &mut [u8]) -> Result<(), ()> {
+    fn dh(&self, pubkey: &[u8], out: &mut [u8]) -> Result<(), SnowError> {
         let result = x25519::x25519(self.privkey, pubkey[..self.pub_len()].try_into().unwrap());
         out[..result.len()].copy_from_slice(&result);
         Ok(())
@@ -87,6 +89,7 @@ impl Dh for Dh25519 {
 struct HashSHA256 {
     hasher: Sha256,
 }
+
 impl Hash for HashSHA256 {
     fn name(&self) -> &'static str {
         "sha256"
@@ -111,6 +114,39 @@ impl Hash for HashSHA256 {
     fn result(&mut self, out: &mut [u8]) {
         let hash = self.hasher.finalize_reset();
         out[..hash.len()].copy_from_slice(&hash);
+    }
+}
+
+// Based on snow's resolvers/default.rs
+#[derive(Default)]
+struct HashBLAKE2b {
+    hasher: Blake2b512,
+}
+
+impl Hash for HashBLAKE2b {
+    fn name(&self) -> &'static str {
+        "BLAKE2b"
+    }
+
+    fn block_len(&self) -> usize {
+        128
+    }
+
+    fn hash_len(&self) -> usize {
+        64
+    }
+
+    fn reset(&mut self) {
+        self.hasher = Blake2b::default();
+    }
+
+    fn input(&mut self, data: &[u8]) {
+        self.hasher.update(data);
+    }
+
+    fn result(&mut self, out: &mut [u8]) {
+        let hash = self.hasher.finalize_reset();
+        out[..64].copy_from_slice(&hash);
     }
 }
 
@@ -156,7 +192,7 @@ impl Cipher for CipherChaChaPoly {
         authtext: &[u8],
         ciphertext: &[u8],
         out: &mut [u8],
-    ) -> Result<usize, ()> {
+    ) -> Result<usize, SnowError> {
         let mut nonce_bytes = [0u8; 12];
         copy_slices!(&nonce.to_le_bytes(), &mut nonce_bytes[4..]);
 
@@ -173,7 +209,7 @@ impl Cipher for CipherChaChaPoly {
 
         match result {
             Ok(_) => Ok(message_len),
-            Err(_) => Err(()),
+            Err(_) => Err(SnowError::Decrypt),
         }
     }
 }
@@ -195,6 +231,7 @@ impl CryptoResolver for Resolver {
     fn resolve_hash(&self, choice: &HashChoice) -> Option<Box<dyn Hash>> {
         match choice {
             HashChoice::SHA256 => Some(Box::<HashSHA256>::default()),
+            HashChoice::Blake2b => Some(Box::<HashBLAKE2b>::default()),
             _ => panic!("{:?} not supported", choice),
         }
     }

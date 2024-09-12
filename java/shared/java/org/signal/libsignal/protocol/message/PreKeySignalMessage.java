@@ -1,10 +1,13 @@
-/**
- * Copyright (C) 2014-2016 Open Whisper Systems
- *
- * Licensed according to the LICENSE file in this repository.
- */
+//
+// Copyright 2014-2016 Signal Messenger, LLC.
+// SPDX-License-Identifier: AGPL-3.0-only
+//
+
 package org.signal.libsignal.protocol.message;
 
+import static org.signal.libsignal.internal.FilterExceptions.filterExceptions;
+
+import java.util.Optional;
 import org.signal.libsignal.internal.Native;
 import org.signal.libsignal.internal.NativeHandleGuard;
 import org.signal.libsignal.protocol.IdentityKey;
@@ -14,21 +17,28 @@ import org.signal.libsignal.protocol.InvalidVersionException;
 import org.signal.libsignal.protocol.LegacyMessageException;
 import org.signal.libsignal.protocol.ecc.ECPublicKey;
 
-import java.util.Optional;
-
 public class PreKeySignalMessage implements CiphertextMessage, NativeHandleGuard.Owner {
 
   private final long unsafeHandle;
 
-  @Override @SuppressWarnings("deprecation")
+  @Override
+  @SuppressWarnings("deprecation")
   protected void finalize() {
-     Native.PreKeySignalMessage_Destroy(this.unsafeHandle);
+    Native.PreKeySignalMessage_Destroy(this.unsafeHandle);
   }
 
   public PreKeySignalMessage(byte[] serialized)
-      throws InvalidMessageException, InvalidVersionException, LegacyMessageException, InvalidKeyException
-  {
-    this.unsafeHandle = Native.PreKeySignalMessage_Deserialize(serialized);
+      throws InvalidMessageException,
+          InvalidVersionException,
+          LegacyMessageException,
+          InvalidKeyException {
+    this.unsafeHandle =
+        filterExceptions(
+            InvalidMessageException.class,
+            InvalidVersionException.class,
+            LegacyMessageException.class,
+            InvalidKeyException.class,
+            () -> Native.PreKeySignalMessage_Deserialize(serialized));
   }
 
   public PreKeySignalMessage(long unsafeHandle) {
@@ -37,25 +47,28 @@ public class PreKeySignalMessage implements CiphertextMessage, NativeHandleGuard
 
   public int getMessageVersion() {
     try (NativeHandleGuard guard = new NativeHandleGuard(this)) {
-      return Native.PreKeySignalMessage_GetVersion(guard.nativeHandle());
+      return filterExceptions(() -> Native.PreKeySignalMessage_GetVersion(guard.nativeHandle()));
     }
   }
 
   public IdentityKey getIdentityKey() {
     try (NativeHandleGuard guard = new NativeHandleGuard(this)) {
-      return new IdentityKey(Native.PreKeySignalMessage_GetIdentityKey(guard.nativeHandle()));
+      return new IdentityKey(
+          filterExceptions(() -> Native.PreKeySignalMessage_GetIdentityKey(guard.nativeHandle())));
     }
   }
 
   public int getRegistrationId() {
     try (NativeHandleGuard guard = new NativeHandleGuard(this)) {
-      return Native.PreKeySignalMessage_GetRegistrationId(guard.nativeHandle());
+      return filterExceptions(
+          () -> Native.PreKeySignalMessage_GetRegistrationId(guard.nativeHandle()));
     }
   }
 
   public Optional<Integer> getPreKeyId() {
     try (NativeHandleGuard guard = new NativeHandleGuard(this)) {
-      int pre_key = Native.PreKeySignalMessage_GetPreKeyId(guard.nativeHandle());
+      int pre_key =
+          filterExceptions(() -> Native.PreKeySignalMessage_GetPreKeyId(guard.nativeHandle()));
       if (pre_key < 0) {
         return Optional.empty();
       } else {
@@ -66,7 +79,8 @@ public class PreKeySignalMessage implements CiphertextMessage, NativeHandleGuard
 
   public int getSignedPreKeyId() {
     try (NativeHandleGuard guard = new NativeHandleGuard(this)) {
-      return Native.PreKeySignalMessage_GetSignedPreKeyId(guard.nativeHandle());
+      return filterExceptions(
+          () -> Native.PreKeySignalMessage_GetSignedPreKeyId(guard.nativeHandle()));
     }
   }
 
@@ -85,7 +99,7 @@ public class PreKeySignalMessage implements CiphertextMessage, NativeHandleGuard
   @Override
   public byte[] serialize() {
     try (NativeHandleGuard guard = new NativeHandleGuard(this)) {
-      return Native.PreKeySignalMessage_GetSerialized(guard.nativeHandle());
+      return filterExceptions(() -> Native.PreKeySignalMessage_GetSerialized(guard.nativeHandle()));
     }
   }
 

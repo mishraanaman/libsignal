@@ -26,7 +26,6 @@ check_rust() {
   fi
 
   if [[ -n "${CARGO_BUILD_TARGET:-}" ]] && ! (rustup target list --installed | grep -q "${CARGO_BUILD_TARGET:-}"); then
-    # TODO: We could remove this once Catalyst support is promoted to tier 2
     if [[ -n "${BUILD_STD:-}" ]]; then
       echo "warning: Building using -Zbuild-std to support tier 3 target ${CARGO_BUILD_TARGET}." >&2
     else
@@ -38,21 +37,30 @@ check_rust() {
   fi
 }
 
-# usage: copy_built_library target/release signal_node out_dir/libsignal_node.node
-#        copy_built_library target/release signal_jni out_dir/
+# usage: copy_built_library target/release signal_jni out_dir/ signal_jni_amd64
 copy_built_library() {
-  for possible_library_name in "lib$2.dylib" "lib$2.so" "$2.dll"; do
+  for pattern in "libX.dylib" "libX.so" "X.dll"; do
+    possible_library_name="${pattern%X*}${2}${pattern#*X}"
+    possible_augmented_name="${pattern%X*}${4}${pattern#*X}"
     possible_library_path="$1/${possible_library_name}"
     if [ -e "${possible_library_path}" ]; then
       out_dir=$(dirname "$3"x) # trailing x to distinguish directories from files
       echo_then_run mkdir -p "${out_dir}"
-      echo_then_run cp "${possible_library_path}" "$3"
+      echo_then_run cp "${possible_library_path}" "$3/${possible_augmented_name}"
       break
     fi
   done
 }
 
 echo_then_run() {
-  echo "$@"
+  for x in "$@"; do
+    # Put single quotes around any argument with spaces in it.
+    if [[ "$x" == *" "* ]]; then
+      echo -n "'$x' "
+    else
+      echo -n "$x "
+    fi
+  done
+  echo
   "$@"
 }

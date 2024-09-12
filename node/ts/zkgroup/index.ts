@@ -16,10 +16,7 @@ export { default as NotarySignature } from './NotarySignature';
 export { default as ClientZkAuthOperations } from './auth/ClientZkAuthOperations';
 export { default as ServerZkAuthOperations } from './auth/ServerZkAuthOperations';
 
-export { default as AuthCredential } from './auth/AuthCredential';
-export { default as AuthCredentialResponse } from './auth/AuthCredentialResponse';
 export { default as AuthCredentialPresentation } from './auth/AuthCredentialPresentation';
-
 export { default as AuthCredentialWithPni } from './auth/AuthCredentialWithPni';
 export { default as AuthCredentialWithPniResponse } from './auth/AuthCredentialWithPniResponse';
 
@@ -69,3 +66,19 @@ export { default as CreateCallLinkCredentialPresentation } from './calllinks/Cre
 export { default as CreateCallLinkCredentialRequest } from './calllinks/CreateCallLinkCredentialRequest';
 export { default as CreateCallLinkCredentialRequestContext } from './calllinks/CreateCallLinkCredentialRequestContext';
 export { default as CreateCallLinkCredentialResponse } from './calllinks/CreateCallLinkCredentialResponse';
+
+// Backup Auth
+export { default as BackupAuthCredential } from './backups/BackupAuthCredential';
+export { default as BackupAuthCredentialPresentation } from './backups/BackupAuthCredentialPresentation';
+export { default as BackupAuthCredentialRequest } from './backups/BackupAuthCredentialRequest';
+export { default as BackupAuthCredentialRequestContext } from './backups/BackupAuthCredentialRequestContext';
+export { default as BackupAuthCredentialResponse } from './backups/BackupAuthCredentialResponse';
+export { default as BackupLevel } from './backups/BackupLevel';
+
+// Group Send
+
+export { default as GroupSendDerivedKeyPair } from './groupsend/GroupSendDerivedKeyPair';
+export { default as GroupSendEndorsement } from './groupsend/GroupSendEndorsement';
+export { default as GroupSendEndorsementsResponse } from './groupsend/GroupSendEndorsementsResponse';
+export { default as GroupSendFullToken } from './groupsend/GroupSendFullToken';
+export { default as GroupSendToken } from './groupsend/GroupSendToken';

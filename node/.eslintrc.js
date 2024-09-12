@@ -5,7 +5,7 @@ module.exports = {
 
   parserOptions: {
     project: './tsconfig.json',
-    ecmaVersion: 2018,
+    ecmaVersion: 2020,
     sourceType: 'module',
   },
 
@@ -13,7 +13,7 @@ module.exports = {
     'import/core-modules': ['electron'],
   },
 
-  plugins: ['header', 'import', 'mocha', 'more', '@typescript-eslint'],
+  plugins: ['header', 'import', 'jsdoc', 'mocha', 'more', '@typescript-eslint'],
 
   extends: [
     'eslint:recommended',
@@ -96,5 +96,23 @@ module.exports = {
 
     // Errors are valid in templates, but this rule doesn't know that.
     '@typescript-eslint/restrict-template-expressions': 'off',
+
+    // JSDoc checking, but no complaints for missing docs yet
+    'jsdoc/check-access': 'error',
+    'jsdoc/check-alignment': 'error',
+    'jsdoc/check-line-alignment': 'error',
+    'jsdoc/check-param-names': ['error', { disableMissingParamChecks: true }],
+    'jsdoc/check-property-names': 'error',
+    'jsdoc/check-syntax': 'error',
+    'jsdoc/check-tag-names': 'error',
+    'jsdoc/check-types': 'error',
+    'jsdoc/check-values': 'error',
+    'jsdoc/empty-tags': 'error',
+    'jsdoc/implements-on-classes': 'error',
+    'jsdoc/multiline-blocks': 'error',
+    'jsdoc/no-bad-blocks': 'error',
+    'jsdoc/no-blank-blocks': 'error',
+    'jsdoc/no-undefined-types': 'error',
+    'jsdoc/valid-types': 'error',
   },
 };

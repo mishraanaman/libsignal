@@ -4,9 +4,9 @@
 //
 
 use zkgroup::call_links::CallLinkAuthCredentialResponse;
-use zkgroup::{RandomnessBytes, Timestamp, UidBytes, RANDOMNESS_LEN, SECONDS_PER_DAY, UUID_LEN};
+use zkgroup::{RandomnessBytes, Timestamp, RANDOMNESS_LEN, SECONDS_PER_DAY, UUID_LEN};
 
-const DAY_ALIGNED_TIMESTAMP: Timestamp = 1681344000; // 2023-04-13 00:00:00 UTC
+const DAY_ALIGNED_TIMESTAMP: Timestamp = Timestamp::from_epoch_seconds(1681344000); // 2023-04-13 00:00:00 UTC
 
 #[test]
 fn test_create_call_link_request_response() {
@@ -17,7 +17,7 @@ fn test_create_call_link_request_response() {
     let randomness4: RandomnessBytes = [0x46u8; RANDOMNESS_LEN];
 
     // client receives in response to initial request
-    let client_user_id: UidBytes = [0x04u8; UUID_LEN];
+    let client_user_id = libsignal_core::Aci::from_uuid_bytes([0x04u8; UUID_LEN]);
     let timestamp: Timestamp = DAY_ALIGNED_TIMESTAMP;
 
     // known to client and redemption server
@@ -70,7 +70,7 @@ fn test_create_call_link_request_response() {
     presentation
         .verify(
             room_id,
-            timestamp - 1,
+            timestamp.sub_seconds(1),
             &server_secret_params,
             &client_public_params,
         )
@@ -78,7 +78,7 @@ fn test_create_call_link_request_response() {
     presentation
         .verify(
             room_id,
-            timestamp + 30 * 60 * 60,
+            timestamp.add_seconds(30 * 60 * 60),
             &server_secret_params,
             &client_public_params,
         )
@@ -97,7 +97,7 @@ fn test_create_call_link_request_response() {
     assert_eq!(
         client_user_id,
         client_secret_params
-            .decrypt_uuid(presentation.get_user_id())
+            .decrypt_uid(presentation.get_user_id())
             .expect("user ID should match")
     );
 }
@@ -109,8 +109,8 @@ fn test_create_call_link_enforces_timestamp_granularity() {
     let randomness2: RandomnessBytes = [0x44u8; RANDOMNESS_LEN];
 
     // client receives in response to initial request
-    let client_user_id: UidBytes = [0x04u8; UUID_LEN];
-    let timestamp: Timestamp = DAY_ALIGNED_TIMESTAMP + 60 * 60; // not on a day boundary!
+    let client_user_id = libsignal_core::Aci::from_uuid_bytes([0x04u8; UUID_LEN]);
+    let timestamp: Timestamp = DAY_ALIGNED_TIMESTAMP.add_seconds(60 * 60); // not on a day boundary!
 
     // known to client and redemption server
     let room_id = b"a very special room";
@@ -151,7 +151,7 @@ fn test_auth_credential() {
     let randomness4: RandomnessBytes = [0x46u8; RANDOMNESS_LEN];
 
     // client receives in response to initial request
-    let client_user_id: UidBytes = [0x04u8; UUID_LEN];
+    let client_user_id = libsignal_core::Aci::from_uuid_bytes([0x04u8; UUID_LEN]);
     let timestamp: Timestamp = DAY_ALIGNED_TIMESTAMP;
 
     // server generated materials; issuance request -> issuance response
@@ -188,7 +188,7 @@ fn test_auth_credential() {
         .expect("credential should be valid for the timestamp given");
     presentation
         .verify(
-            timestamp + SECONDS_PER_DAY,
+            timestamp.add_seconds(SECONDS_PER_DAY),
             &server_secret_params,
             &client_public_params,
         )
@@ -197,14 +197,14 @@ fn test_auth_credential() {
     // Check some error cases.
     presentation
         .verify(
-            timestamp + 2 * SECONDS_PER_DAY + 1,
+            timestamp.add_seconds(2 * SECONDS_PER_DAY + 1),
             &server_secret_params,
             &client_public_params,
         )
         .expect_err("credential should expire more than two days later");
     presentation
         .verify(
-            timestamp - SECONDS_PER_DAY - 1,
+            timestamp.sub_seconds(SECONDS_PER_DAY + 1),
             &server_secret_params,
             &client_public_params,
         )
@@ -214,7 +214,7 @@ fn test_auth_credential() {
     assert_eq!(
         client_user_id,
         client_secret_params
-            .decrypt_uuid(presentation.get_user_id())
+            .decrypt_uid(presentation.get_user_id())
             .expect("user ID should match")
     );
 }
@@ -225,8 +225,8 @@ fn test_auth_credential_enforces_timestamp_granularity() {
     let randomness2: RandomnessBytes = [0x44u8; RANDOMNESS_LEN];
 
     // client receives in response to initial request
-    let client_user_id: UidBytes = [0x04u8; UUID_LEN];
-    let timestamp: Timestamp = DAY_ALIGNED_TIMESTAMP + 60 * 60; // not on a day boundary!
+    let client_user_id = libsignal_core::Aci::from_uuid_bytes([0x04u8; UUID_LEN]);
+    let timestamp: Timestamp = DAY_ALIGNED_TIMESTAMP.add_seconds(60 * 60); // not on a day boundary!
 
     // server generated materials; issuance request -> issuance response
     let server_secret_params =

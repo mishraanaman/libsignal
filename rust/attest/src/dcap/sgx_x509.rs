@@ -4,13 +4,13 @@
 //
 
 use std::collections::HashMap;
-use std::convert::{TryFrom, TryInto};
+
+use asn1::{oid, ObjectIdentifier, SequenceOf};
+use boring_signal::asn1::Asn1ObjectRef;
+use boring_signal::nid::Nid;
 
 use crate::dcap::{Error, Result};
 use crate::error::Context;
-use asn1::{oid, ObjectIdentifier, SequenceOf};
-use boring::asn1::Asn1ObjectRef;
-use boring::nid::Nid;
 
 pub const SGX_EXTENSIONS_OID: &str = "1.2.840.113741.1.13.1";
 const _SGX_EXTENSIONS_OID_OID: ObjectIdentifier = oid!(1, 2, 840, 113741, 1, 13, 1);
@@ -381,13 +381,12 @@ impl<'a> TryFrom<SequenceOf<'a, SgxExtension<'a>>> for Configuration {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::util::testio::read_test_file;
 
     #[test]
     fn test_deserialization() {
-        let data = read_test_file("tests/data/sgx_x509_extension.der");
+        const DATA: &[u8] = include_bytes!("../../tests/data/sgx_x509_extension.der");
 
-        let ext = SgxPckExtension::from_der(&data).unwrap();
+        let ext = SgxPckExtension::from_der(DATA).unwrap();
 
         assert_eq!(ext.pceid, [0u8, 0u8]);
         assert_eq!(ext.tcb.pcesvn, 11);

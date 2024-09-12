@@ -3,22 +3,26 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 
-use crate::common::errors::*;
-use crate::common::sho::*;
-use crate::common::simple_types::*;
-use crate::{api, crypto};
+use partial_default::PartialDefault;
 use serde::{Deserialize, Serialize};
 
-#[derive(Copy, Clone, Serialize, Deserialize)]
+use crate::common::errors::*;
+use crate::common::serialization::ReservedByte;
+use crate::common::sho::*;
+use crate::{api, crypto};
+
+#[derive(Copy, Clone, Serialize, Deserialize, PartialDefault)]
 pub struct CallLinkSecretParams {
-    reserved: ReservedBytes,
-    pub(crate) uid_enc_key_pair: crypto::uid_encryption::KeyPair,
+    reserved: ReservedByte,
+    pub(crate) uid_enc_key_pair:
+        zkcredential::attributes::KeyPair<crypto::uid_encryption::UidEncryptionDomain>,
 }
 
-#[derive(Copy, Clone, Serialize, Deserialize)]
+#[derive(Copy, Clone, Serialize, Deserialize, PartialDefault)]
 pub struct CallLinkPublicParams {
-    reserved: ReservedBytes,
-    pub(crate) uid_enc_public_key: crypto::uid_encryption::PublicKey,
+    reserved: ReservedByte,
+    pub(crate) uid_enc_public_key:
+        zkcredential::attributes::PublicKey<crypto::uid_encryption::UidEncryptionDomain>,
 }
 
 impl CallLinkSecretParams {
@@ -27,7 +31,7 @@ impl CallLinkSecretParams {
             b"Signal_ZKGroup_20230419_CallLinkSecretParams_DeriveFromRootKey",
             root_key,
         );
-        let uid_enc_key_pair = crypto::uid_encryption::KeyPair::derive_from(&mut sho);
+        let uid_enc_key_pair = zkcredential::attributes::KeyPair::derive_from(sho.as_mut());
 
         Self {
             reserved: Default::default(),
@@ -38,12 +42,12 @@ impl CallLinkSecretParams {
     pub fn get_public_params(&self) -> CallLinkPublicParams {
         CallLinkPublicParams {
             reserved: Default::default(),
-            uid_enc_public_key: self.uid_enc_key_pair.get_public_key(),
+            uid_enc_public_key: self.uid_enc_key_pair.public_key,
         }
     }
 
-    pub fn encrypt_uuid(&self, uid_bytes: UidBytes) -> api::groups::UuidCiphertext {
-        let uid = crypto::uid_struct::UidStruct::new(uid_bytes);
+    pub fn encrypt_uid(&self, user_id: libsignal_core::Aci) -> api::groups::UuidCiphertext {
+        let uid = crypto::uid_struct::UidStruct::from_service_id(user_id.into());
         self.encrypt_uid_struct(uid)
     }
 
@@ -51,18 +55,21 @@ impl CallLinkSecretParams {
         &self,
         uid: crypto::uid_struct::UidStruct,
     ) -> api::groups::UuidCiphertext {
-        let ciphertext = self.uid_enc_key_pair.encrypt(uid);
+        let ciphertext = self.uid_enc_key_pair.encrypt(&uid);
         api::groups::UuidCiphertext {
             reserved: Default::default(),
             ciphertext,
         }
     }
 
-    pub fn decrypt_uuid(
+    pub fn decrypt_uid(
         &self,
         ciphertext: api::groups::UuidCiphertext,
-    ) -> Result<UidBytes, ZkGroupVerificationFailure> {
-        let uid = self.uid_enc_key_pair.decrypt(ciphertext.ciphertext)?;
-        Ok(uid.to_bytes())
+    ) -> Result<libsignal_core::Aci, ZkGroupVerificationFailure> {
+        let uid = crypto::uid_encryption::UidEncryptionDomain::decrypt(
+            &self.uid_enc_key_pair,
+            &ciphertext.ciphertext,
+        )?;
+        uid.try_into().map_err(|_| ZkGroupVerificationFailure)
     }
 }

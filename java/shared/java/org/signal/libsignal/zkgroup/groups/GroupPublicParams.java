@@ -5,15 +5,18 @@
 
 package org.signal.libsignal.zkgroup.groups;
 
+import static org.signal.libsignal.internal.FilterExceptions.filterExceptions;
+
+import org.signal.libsignal.internal.Native;
 import org.signal.libsignal.zkgroup.InvalidInputException;
 import org.signal.libsignal.zkgroup.internal.ByteArray;
-import org.signal.libsignal.internal.Native;
 
 public final class GroupPublicParams extends ByteArray {
 
   public GroupPublicParams(byte[] contents) throws InvalidInputException {
     super(contents);
-    Native.GroupPublicParams_CheckValidContents(contents);
+    filterExceptions(
+        InvalidInputException.class, () -> Native.GroupPublicParams_CheckValidContents(contents));
   }
 
   public GroupIdentifier getGroupIdentifier() {
@@ -25,5 +28,4 @@ public final class GroupPublicParams extends ByteArray {
       throw new AssertionError(e);
     }
   }
-
 }

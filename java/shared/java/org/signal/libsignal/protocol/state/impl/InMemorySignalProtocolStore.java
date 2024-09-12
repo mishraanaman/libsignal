@@ -1,33 +1,34 @@
-/**
- * Copyright (C) 2014-2016 Open Whisper Systems
- *
- * Licensed according to the LICENSE file in this repository.
- */
+//
+// Copyright 2014-2016 Signal Messenger, LLC.
+// SPDX-License-Identifier: AGPL-3.0-only
+//
+
 package org.signal.libsignal.protocol.state.impl;
 
-import org.signal.libsignal.protocol.SignalProtocolAddress;
+import java.util.List;
+import java.util.UUID;
 import org.signal.libsignal.protocol.IdentityKey;
 import org.signal.libsignal.protocol.IdentityKeyPair;
 import org.signal.libsignal.protocol.InvalidKeyIdException;
 import org.signal.libsignal.protocol.NoSessionException;
+import org.signal.libsignal.protocol.SignalProtocolAddress;
 import org.signal.libsignal.protocol.groups.state.InMemorySenderKeyStore;
 import org.signal.libsignal.protocol.groups.state.SenderKeyRecord;
-import org.signal.libsignal.protocol.state.SignalProtocolStore;
+import org.signal.libsignal.protocol.state.KyberPreKeyRecord;
 import org.signal.libsignal.protocol.state.PreKeyRecord;
 import org.signal.libsignal.protocol.state.SessionRecord;
+import org.signal.libsignal.protocol.state.SignalProtocolStore;
 import org.signal.libsignal.protocol.state.SignedPreKeyRecord;
-
-import java.util.List;
-import java.util.UUID;
 
 public class InMemorySignalProtocolStore implements SignalProtocolStore {
 
-  private final InMemoryPreKeyStore       preKeyStore       = new InMemoryPreKeyStore();
-  private final InMemorySessionStore      sessionStore      = new InMemorySessionStore();
+  private final InMemoryPreKeyStore preKeyStore = new InMemoryPreKeyStore();
+  private final InMemorySessionStore sessionStore = new InMemorySessionStore();
   private final InMemorySignedPreKeyStore signedPreKeyStore = new InMemorySignedPreKeyStore();
-  private final InMemorySenderKeyStore    senderKeyStore    = new InMemorySenderKeyStore();
+  private final InMemoryKyberPreKeyStore kyberPreKeyStore = new InMemoryKyberPreKeyStore();
+  private final InMemorySenderKeyStore senderKeyStore = new InMemorySenderKeyStore();
 
-  private final InMemoryIdentityKeyStore  identityKeyStore;
+  private final InMemoryIdentityKeyStore identityKeyStore;
 
   public InMemorySignalProtocolStore(IdentityKeyPair identityKeyPair, int registrationId) {
     this.identityKeyStore = new InMemoryIdentityKeyStore(identityKeyPair, registrationId);
@@ -49,7 +50,8 @@ public class InMemorySignalProtocolStore implements SignalProtocolStore {
   }
 
   @Override
-  public boolean isTrustedIdentity(SignalProtocolAddress address, IdentityKey identityKey, Direction direction) {
+  public boolean isTrustedIdentity(
+      SignalProtocolAddress address, IdentityKey identityKey, Direction direction) {
     return identityKeyStore.isTrustedIdentity(address, identityKey, direction);
   }
 
@@ -84,7 +86,8 @@ public class InMemorySignalProtocolStore implements SignalProtocolStore {
   }
 
   @Override
-  public List<SessionRecord> loadExistingSessions(List<SignalProtocolAddress> addresses) throws NoSessionException {
+  public List<SessionRecord> loadExistingSessions(List<SignalProtocolAddress> addresses)
+      throws NoSessionException {
     return sessionStore.loadExistingSessions(addresses);
   }
 
@@ -139,12 +142,42 @@ public class InMemorySignalProtocolStore implements SignalProtocolStore {
   }
 
   @Override
-  public void storeSenderKey(SignalProtocolAddress sender, UUID distributionId, SenderKeyRecord record) {
+  public void storeSenderKey(
+      SignalProtocolAddress sender, UUID distributionId, SenderKeyRecord record) {
     senderKeyStore.storeSenderKey(sender, distributionId, record);
   }
 
   @Override
   public SenderKeyRecord loadSenderKey(SignalProtocolAddress sender, UUID distributionId) {
     return senderKeyStore.loadSenderKey(sender, distributionId);
+  }
+
+  @Override
+  public KyberPreKeyRecord loadKyberPreKey(int kyberPreKeyId) throws InvalidKeyIdException {
+    return kyberPreKeyStore.loadKyberPreKey(kyberPreKeyId);
+  }
+
+  @Override
+  public List<KyberPreKeyRecord> loadKyberPreKeys() {
+    return kyberPreKeyStore.loadKyberPreKeys();
+  }
+
+  @Override
+  public void storeKyberPreKey(int kyberPreKeyId, KyberPreKeyRecord record) {
+    kyberPreKeyStore.storeKyberPreKey(kyberPreKeyId, record);
+  }
+
+  @Override
+  public boolean containsKyberPreKey(int kyberPreKeyId) {
+    return kyberPreKeyStore.containsKyberPreKey(kyberPreKeyId);
+  }
+
+  @Override
+  public void markKyberPreKeyUsed(int kyberPreKeyId) {
+    kyberPreKeyStore.markKyberPreKeyUsed(kyberPreKeyId);
+  }
+
+  public boolean hasKyberPreKeyBeenUsed(int kyberPreKeyId) {
+    return kyberPreKeyStore.hasKyberPreKeyBeenUsed(kyberPreKeyId);
   }
 }

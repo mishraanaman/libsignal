@@ -3,9 +3,11 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 
+use std::collections::HashMap;
+
+use hex_literal::hex;
 use rand::Rng;
 use serde::Deserialize;
-use std::collections::HashMap;
 
 #[allow(dead_code)]
 #[derive(Deserialize, Debug)]
@@ -73,8 +75,8 @@ fn test_kat(kat: WycheproofTest) -> Result<(), signal_crypto::Error> {
     let mut gcm_enc = signal_crypto::Aes256GcmEncryption::new(&key, &nonce, &aad)?;
 
     let mut buf = pt.clone();
-    gcm_enc.encrypt(&mut buf)?;
-    let generated_tag = gcm_enc.compute_tag()?;
+    gcm_enc.encrypt(&mut buf);
+    let generated_tag = gcm_enc.compute_tag();
 
     let mut gcm_dec = signal_crypto::Aes256GcmDecryption::new(&key, &nonce, &aad)?;
 
@@ -82,7 +84,7 @@ fn test_kat(kat: WycheproofTest) -> Result<(), signal_crypto::Error> {
         assert_eq!(hex::encode(generated_tag), hex::encode(&tag));
         assert_eq!(hex::encode(&buf), hex::encode(&ct));
 
-        gcm_dec.decrypt(&mut buf)?;
+        gcm_dec.decrypt(&mut buf);
         assert!(gcm_dec.verify_tag(&tag).is_ok());
         assert_eq!(hex::encode(&buf), hex::encode(&pt));
 
@@ -99,17 +101,17 @@ fn test_kat(kat: WycheproofTest) -> Result<(), signal_crypto::Error> {
             while processed != buf.len() {
                 let remaining = buf.len() - processed;
                 let this_time = if remaining > 1 {
-                    rng.gen_range(1, remaining)
+                    rng.gen_range(1..remaining)
                 } else {
                     remaining
                 };
                 assert!(this_time > 0);
-                gcm_enc.encrypt(&mut enc_buf[processed..processed + this_time])?;
-                gcm_dec.decrypt(&mut dec_buf[processed..processed + this_time])?;
+                gcm_enc.encrypt(&mut enc_buf[processed..processed + this_time]);
+                gcm_dec.decrypt(&mut dec_buf[processed..processed + this_time]);
                 processed += this_time;
             }
 
-            assert_eq!(hex::encode(gcm_enc.compute_tag()?), hex::encode(&tag));
+            assert_eq!(hex::encode(gcm_enc.compute_tag()), hex::encode(&tag));
             assert!(gcm_dec.verify_tag(&tag).is_ok());
 
             assert_eq!(hex::encode(enc_buf), hex::encode(&ct));
@@ -118,12 +120,12 @@ fn test_kat(kat: WycheproofTest) -> Result<(), signal_crypto::Error> {
     } else {
         assert_ne!(hex::encode(generated_tag), hex::encode(&tag));
 
-        gcm_dec.decrypt(&mut buf)?;
+        gcm_dec.decrypt(&mut buf);
 
-        assert_eq!(
+        assert!(matches!(
             gcm_dec.verify_tag(&tag),
             Err(signal_crypto::Error::InvalidTag)
-        );
+        ));
     }
 
     Ok(())
@@ -149,18 +151,17 @@ fn aes_gcm_wycheproof_kats() -> Result<(), signal_crypto::Error> {
 
 #[test]
 fn aes_gcm_smoke_test() -> Result<(), signal_crypto::Error> {
-    let key = hex::decode("feffe9928665731c6d6a8f9467308308feffe9928665731c6d6a8f9467308308")
-        .expect("Valid hex");
-    let nonce = hex::decode("cafebabefacedbaddecaf888").expect("Valid hex");
-    let input = hex::decode("d9313225f88406e5a55909c5aff5269a86a7a9531534f7da2e4c303d8a318a721c3c0c95956809532fcf0e2449a6b525b16aedf5aa0de657ba637b39").expect("Valid hex");
-    let ad = hex::decode("feedfacedeadbeeffeedfacedeadbeefabaddad2").expect("Valid hex");
-    let output = hex::decode("522dc1f099567d07f47f37a32a84427d643a8cdcbfe5c0c97598a2bd2555d1aa8cb08e48590dbb3da7b08b1056828838c5f61e6393ba7a0abcc9f66276fc6ece0f4e1768cddf8853bb2d551b").expect("Valid hex");
+    let key = hex!("feffe9928665731c6d6a8f9467308308feffe9928665731c6d6a8f9467308308");
+    let nonce = hex!("cafebabefacedbaddecaf888");
+    let input = hex!("d9313225f88406e5a55909c5aff5269a86a7a9531534f7da2e4c303d8a318a721c3c0c95956809532fcf0e2449a6b525b16aedf5aa0de657ba637b39");
+    let ad = hex!("feedfacedeadbeeffeedfacedeadbeefabaddad2");
+    let output = hex!("522dc1f099567d07f47f37a32a84427d643a8cdcbfe5c0c97598a2bd2555d1aa8cb08e48590dbb3da7b08b1056828838c5f61e6393ba7a0abcc9f66276fc6ece0f4e1768cddf8853bb2d551b");
 
     let mut aes_gcm = signal_crypto::Aes256GcmEncryption::new(&key, &nonce, &ad)?;
 
-    let mut buf = input;
-    aes_gcm.encrypt(&mut buf)?;
-    let tag = aes_gcm.compute_tag()?;
+    let mut buf = input.to_vec();
+    aes_gcm.encrypt(&mut buf);
+    let tag = aes_gcm.compute_tag();
 
     buf.extend_from_slice(&tag);
     assert_eq!(hex::encode(buf), hex::encode(output));

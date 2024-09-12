@@ -5,12 +5,20 @@
 
 package org.signal.libsignal.zkgroup.internal;
 
-import org.signal.libsignal.zkgroup.InvalidInputException;
-
 import java.util.Arrays;
 import java.util.Locale;
+import org.signal.libsignal.zkgroup.InvalidInputException;
 
 public abstract class ByteArray {
+
+  /** Marker for ByteArray subclasses that want to skip validation. */
+  public static enum UncheckedAndUncloned {
+    UNCHECKED_AND_UNCLONED;
+  }
+
+  /** Marker for ByteArray subclasses that want to skip validation. */
+  public static final UncheckedAndUncloned UNCHECKED_AND_UNCLONED =
+      UncheckedAndUncloned.UNCHECKED_AND_UNCLONED;
 
   protected final byte[] contents;
 
@@ -18,13 +26,23 @@ public abstract class ByteArray {
     this.contents = contents.clone();
   }
 
+  protected ByteArray(byte[] contents, UncheckedAndUncloned marker) {
+    this.contents = contents;
+  }
+
   protected ByteArray(byte[] contents, int expectedLength) throws InvalidInputException {
     this.contents = cloneArrayOfLength(contents, expectedLength);
   }
 
-  private static byte[] cloneArrayOfLength(byte[] bytes, int expectedLength) throws InvalidInputException {
+  private static byte[] cloneArrayOfLength(byte[] bytes, int expectedLength)
+      throws InvalidInputException {
     if (bytes.length != expectedLength) {
-      throw new InvalidInputException(String.format(Locale.US, "Length of array supplied was %d expected %d", bytes.length, expectedLength));
+      throw new InvalidInputException(
+          String.format(
+              Locale.US,
+              "Length of array supplied was %d expected %d",
+              bytes.length,
+              expectedLength));
     }
 
     return bytes.clone();
@@ -48,13 +66,17 @@ public abstract class ByteArray {
     if (o == null || getClass() != o.getClass()) return false;
 
     ByteArray other = (ByteArray) o;
-    if (contents == other.getInternalContentsForJNI()) return true;
+    return constantTimeEqual(contents, other.getInternalContentsForJNI());
+  }
 
-    if (contents.length != other.getInternalContentsForJNI().length) return false;
+  public static boolean constantTimeEqual(byte[] lhs, byte[] rhs) {
+    if (lhs == rhs) return true;
+
+    if (lhs.length != rhs.length) return false;
 
     int result = 0;
-    for (int i = 0; i < contents.length; i++) {
-      result |= contents[i] ^ other.getInternalContentsForJNI()[i];
+    for (int i = 0; i < lhs.length; i++) {
+      result |= lhs[i] ^ rhs[i];
     }
     return result == 0;
   }

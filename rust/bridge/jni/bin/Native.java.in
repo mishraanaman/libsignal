@@ -12,6 +12,7 @@ import org.signal.libsignal.protocol.state.IdentityKeyStore;
 import org.signal.libsignal.protocol.state.SessionStore;
 import org.signal.libsignal.protocol.state.PreKeyStore;
 import org.signal.libsignal.protocol.state.SignedPreKeyStore;
+import org.signal.libsignal.protocol.state.KyberPreKeyStore;
 import org.signal.libsignal.protocol.groups.state.SenderKeyStore;
 import org.signal.libsignal.protocol.logging.Log;
 import org.signal.libsignal.protocol.logging.SignalProtocolLogger;
@@ -21,13 +22,25 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.nio.ByteBuffer;
 import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.concurrent.Future;
 import java.util.UUID;
 import java.util.Map;
 
 public final class Native {
-  private static void copyToTempFileAndLoad(InputStream in, String name) throws IOException {
-    File tempFile = Files.createTempFile(null, name).toFile();
+  private static Path tempDir;
+
+  private static void copyToTempDirAndLoad(InputStream in, String name) throws IOException {
+    // This isn't thread-safe but that's okay because it's only ever called from
+    // static initializers, which are themselves thread-safe.
+    if (tempDir == null) {
+      tempDir = Files.createTempDirectory("libsignal");
+      tempDir.toFile().deleteOnExit();
+    }
+
+    File tempFile = Files.createFile(tempDir.resolve(name)).toFile();
     tempFile.deleteOnExit();
 
     try (OutputStream out = new FileOutputStream(tempFile)) {
@@ -41,29 +54,48 @@ public final class Native {
     System.load(tempFile.getAbsolutePath());
   }
 
-  /*
-  If libsignal_jni is embedded within this jar as a resource file, attempt
-  to copy it to a temporary file and then load it. This allows the jar to be
-  used even without a shared library existing on the filesystem.
-  */
-  private static void loadLibrary() {
-    try {
-      String libraryName = System.mapLibraryName("signal_jni");
+  /**
+   * If the library is embedded within this jar as a resource file, attempt to
+   * copy it to a temporary file and then load it. This allows the jar to be
+   * used even without a shared library existing on the filesystem.
+   *
+   * If a version of the library that includes this system's hardware architecture in its name is
+   * present, prefer that to the supplied name (e.g. "libsignal_amd64.so" will be preferred to
+   * "libsignal.so"). This applies only to libraries embedded as a resource, not libraries
+   * installed on the local machine.
+   *
+   * Package-private to allow the NativeTest class to load its shared library.
+   * This method should only be called from a static initializer.
+   */
+  static void loadLibrary(String name) throws IOException {
+    String arch = System.getProperty("os.arch");
+    // Special-case: some Java implementations use "x86_64", but OpenJDK uses "amd64".
+    if ("x86_64".equals(arch)) {
+      arch = "amd64";
+    }
+    for (String suffix : new String[]{ "_" + arch, "" }) {
+      final String libraryName = System.mapLibraryName(name + suffix);
       try (InputStream in = Native.class.getResourceAsStream("/" + libraryName)) {
         if (in != null) {
-          copyToTempFileAndLoad(in, libraryName);
-        } else {
-          System.loadLibrary("signal_jni");
+          copyToTempDirAndLoad(in, libraryName);
+          return;
         }
       }
+    }
+    System.loadLibrary(name);
+  }
+
+  private static void loadNativeCode() {
+    try {
+      loadLibrary("signal_jni");
     } catch (Exception e) {
       throw new RuntimeException(e);
     }
   }
 
   static {
-    loadLibrary();
-    Logger_Initialize(SignalProtocolLogger.INFO, Log.class);
+    loadNativeCode();
+    initializeLibrary();
   }
 
   private Native() {}

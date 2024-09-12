@@ -7,8 +7,12 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
-  NDK_VERSION: 25.2.9519653
+  NDK_VERSION: 27.0.12077973
   RUST_BACKTRACE: 1
+  LIBSIGNAL_MINIMUM_SUPPORTED_RUST_VERSION: 1.72
+  # For dev builds, include limited debug info in the output. See
+  # https://doc.rust-lang.org/cargo/reference/profiles.html#debug
+  CARGO_PROFILE_DEV_DEBUG: limited
 
 jobs:
   changes:
@@ -29,9 +33,11 @@ jobs:
       rust_ios: ${{ steps.filter.outputs.rust_ios }}
 
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
+      with:
+        submodules: recursive
 
-    - uses: dorny/paths-filter@4512585405083f25c027a35db413c2b3b9006d50 # v2.11.1
+    - uses: dorny/paths-filter@0bc4621a3135347011ad047f9ecf449bf72ce2bd # v3.0
       id: filter
       with:
         filters: |
@@ -39,8 +45,10 @@ jobs:
           - '.github/workflows/build_and_test.yml'
           - 'bin/**'
           - 'rust/*'
-          - 'rust/!(bridge)/**'
+          - 'rust/!(bridge|protocol)/**'
           - 'rust/bridge/shared/**'
+          - 'rust/protocol/*'
+          - 'rust/protocol/!(cross-version-testing)/**'
           - 'rust-toolchain'
           - 'Cargo.toml'
           - 'Cargo.lock'
@@ -49,7 +57,8 @@ jobs:
           - '.clippy.toml'
           - '.rustfmt.license-template'
           - '.rustfmt.toml'
-          - 'rust/**' # deliberately re-include the rust/bridge/ directories
+          - 'acknowledgments/**'
+          - 'rust/**' # deliberately re-include rust/bridge/* and rust/protocol/cross-version-testing
           java:
           - *all
           - '.dockerignore'
@@ -75,6 +84,9 @@ jobs:
           - '.github/stale.yml'
           - '.github/workflows/**'
           - '.gitignore'
+          - '.gitattributes'
+          - '.editorconfig'
+          - 'justfile'
 
     - name: Check pattern completeness
       run: echo "::error file=.github/workflows/build_and_test.yml::File not included in any filter" && false
@@ -94,20 +106,38 @@ jobs:
       matrix:
         version: [nightly, stable]
         include:
-          - version: stable
-            toolchain: "+stable"
+        - version: nightly
+          toolchain: "$(cat rust-toolchain)"
+          cargo-keep-going: "--keep-going"
+        - version: stable
+          toolchain: "${LIBSIGNAL_MINIMUM_SUPPORTED_RUST_VERSION}"
+          # Remove this switch once our MSRV is at least 1.74, which stablilized the --keep-going flag.
+          cargo-keep-going: ""
+
+    timeout-minutes: 45
 
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
+      with:
+        submodules: recursive
 
-    - run: sudo apt-get update && sudo apt-get install gcc-multilib g++-multilib
+    - run: sudo apt-get update && sudo apt-get install protobuf-compiler
 
-    - run: rustup toolchain install $(cat rust-toolchain) --profile minimal --component rustfmt,clippy --target i686-unknown-linux-gnu
+    - run: rustup toolchain install ${{ matrix.toolchain }} --profile minimal --component rustfmt,clippy
+
+    - name: Cache locally-built tools
+      uses: actions/cache@ab5e6d0c87105b4c9c2047343972218f562e4319 # v4.0.1
+      with:
+        path: local-tools
+        key: ${{ runner.os }}-local-tools-${{ matrix.version }}-${{ hashFiles('acknowledgments/cargo-about-version', '.taplo-cli-version') }}
+
+    - name: Build cargo-about if needed
+      run: cargo +stable install --version $(cat acknowledgments/cargo-about-version) --locked cargo-about --root local-tools
       if: matrix.version == 'nightly'
 
-    - name: Install Rust (stable)
-      run: rustup +stable target add i686-unknown-linux-gnu
-      if: matrix.version == 'stable'
+    - name: Build taplo-cli if needed
+      run: cargo +stable install --version $(cat .taplo-cli-version) --locked taplo-cli --root local-tools
+      if: matrix.version == 'nightly'
 
     # This should be done before anything else
     # because it also checks that the lockfile is up to date.
@@ -115,48 +145,112 @@ jobs:
       run: ./bin/verify_duplicate_crates
       if: matrix.version == 'nightly'
 
+    - name: Cargo.toml formatting check
+      run: PATH="$PATH:$PWD/local-tools/bin" taplo format -c .taplo.toml --check
+      if: matrix.version == 'nightly'
+
     - name: Rustfmt check
       run: cargo fmt --all -- --check
+      if: matrix.version == 'nightly'
+
+    - name: Rustfmt check for cross-version-testing
+      run: cargo fmt --all -- --check
+      working-directory: rust/protocol/cross-version-testing
       if: matrix.version == 'nightly'
 
     - name: Check bridge versioning
       run: ./bin/update_versions.py
       if: matrix.version == 'nightly'
 
+    - name: Check acknowledgments
+      run: PATH="$PATH:$PWD/local-tools/bin" ./bin/regenerate_acknowledgments.sh && git diff --name-status --exit-code acknowledgments
+      if: matrix.version == 'nightly'
+
     - name: Build
-      run: cargo ${{ matrix.toolchain }} build --workspace --verbose
+      run: cargo +${{ matrix.toolchain }} build --workspace --features libsignal-ffi/signal-media --verbose ${{ matrix.cargo-keep-going }}
 
     - name: Run tests
-      run: cargo ${{ matrix.toolchain }} test --workspace --all-features --verbose -- -Z unstable-options --include-ignored
+      run: cargo +${{ matrix.toolchain }} test --workspace --all-features --verbose --no-fail-fast -- --include-ignored
 
-    - name: Run tests (32-bit)
-      # Exclude signal-neon-futures because those tests run Node
-      run: cargo ${{ matrix.toolchain }} test --workspace --all-features --verbose --target i686-unknown-linux-gnu --exclude signal-neon-futures -- -Z unstable-options --include-ignored
+    - name: Test run benches
+      run: cargo +${{ matrix.toolchain }} test --workspace --benches --all-features --verbose --no-fail-fast
 
-    - name: Build benches and bins
-      run: cargo ${{ matrix.toolchain }} build --benches --bins --all-features --verbose
+    - name: Build bins and examples
+      run: cargo +${{ matrix.toolchain }} build --workspace  --bins --examples --all-features --verbose ${{ matrix.cargo-keep-going }}
 
     - name: Clippy
-      run: cargo clippy --workspace --all-targets --all-features -- -D warnings
+      run: cargo clippy --workspace --all-targets --all-features ${{ matrix.cargo-keep-going }} -- -D warnings
       if: matrix.version == 'nightly'
+
+    - name: cargo clean (reclaim disk space)
+      # Clean the contents of the target directory to avoid running out of disk space during the
+      # doc build.
+      run: cargo +stable clean
+      if: matrix.version == 'stable'
+
+    - name: Rust docs
+      run: cargo +${{ matrix.toolchain }} doc --workspace --all-features ${{ matrix.cargo-keep-going }}
+      if: matrix.version == 'stable'
+      env:
+        RUSTFLAGS: -D warnings
 
     # We check the fuzz targets on stable because they don't have lockfiles,
     # and crates don't generally support arbitrary nightly versions.
     # See https://github.com/dtolnay/proc-macro2/issues/307 for an example.
 
+    - name: cargo clean (reclaim disk space)
+      # Clean the contents of the target directory to avoid running out of disk space during the
+      # following steps.
+      run: cargo +stable clean
+      if: matrix.version == 'stable'
+
     - name: Check that the protocol fuzz target still builds
-      run: cargo +stable check --all-targets
+      run: cargo +${{ matrix.toolchain }} check --all-targets ${{ matrix.cargo-keep-going }}
       working-directory: rust/protocol/fuzz
       env:
         RUSTFLAGS: --cfg fuzzing
       if: matrix.version == 'stable'
 
     - name: Check that the attest fuzz target still builds
-      run: cargo +stable check --all-targets
+      run: cargo +${{ matrix.toolchain }} check --all-targets ${{ matrix.cargo-keep-going }}
       working-directory: rust/attest/fuzz
       env:
         RUSTFLAGS: --cfg fuzzing
       if: matrix.version == 'stable'
+
+  rust32:
+    name: Rust (32-bit testing)
+
+    runs-on: ubuntu-latest
+
+    needs: changes
+
+    if: ${{ needs.changes.outputs.rust == 'true' }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        version: [nightly, stable]
+        include:
+        - version: nightly
+          toolchain: "$(cat rust-toolchain)"
+        - version: stable
+          toolchain: "${LIBSIGNAL_MINIMUM_SUPPORTED_RUST_VERSION}"
+
+    timeout-minutes: 45
+
+    steps:
+    - uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
+      with:
+        submodules: recursive
+
+    - run: sudo apt-get update && sudo apt-get install gcc-multilib g++-multilib protobuf-compiler
+
+    - run: rustup toolchain install ${{ matrix.toolchain }} --profile minimal --target i686-unknown-linux-gnu
+
+    - name: Run tests (32-bit)
+      # Exclude signal-neon-futures because those tests run Node
+      run: cargo +${{ matrix.toolchain }} test --workspace --all-features --verbose --target i686-unknown-linux-gnu --exclude signal-neon-futures --no-fail-fast -- --include-ignored
 
   java:
     name: Java
@@ -165,23 +259,45 @@ jobs:
 
     needs: changes
 
+    permissions:
+      # Needed for check_code_size.py to examine previous runs.
+      actions: read
+      contents: read
+
     if: ${{ needs.changes.outputs.java == 'true' }}
 
+    timeout-minutes: 45
+
     steps:
-    - uses: actions/checkout@v3
+    - run: echo "JAVA_HOME=$JAVA_HOME_17_X64" >> "$GITHUB_ENV"
+
+    - uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
+      with:
+        submodules: recursive
+        # Download all commits so we can search for the merge base with origin/main.
+        fetch-depth: 0
 
     - name: Install NDK
-      run: sudo ${ANDROID_HOME}/tools/bin/sdkmanager --install "ndk;${NDK_VERSION}"
+      run: sudo ${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin/sdkmanager --install "ndk;${NDK_VERSION}"
+
+    - run: sudo apt-get update && sudo apt-get install protobuf-compiler
 
     - run: rustup toolchain install $(cat rust-toolchain) --profile minimal --target aarch64-linux-android,armv7-linux-androideabi,x86_64-linux-android,i686-linux-android
 
     - name: Verify that the JNI bindings are up to date
       run: rust/bridge/jni/bin/gen_java_decl.py --verify
 
-    - run: ./gradlew build
+    - run: ./gradlew build assembleDebugAndroidTest android:lintDebug -PandroidArchs=arm,arm64 | tee ./gradle-output.txt
+      working-directory: java
+      shell: bash # Explicitly setting the shell turns on pipefail in GitHub Actions
+
+    # Check for -Xcheck:jni warnings manually; Gradle doesn't capture them for some reason.
+    - run: "! grep WARNING ./gradle-output.txt"
       working-directory: java
 
     - run: java/check_code_size.py
+      env:
+        GH_TOKEN: ${{ github.token }}
 
   node:
     name: Node
@@ -196,8 +312,12 @@ jobs:
 
     if: ${{ needs.changes.outputs.node == 'true' }}
 
+    timeout-minutes: 45
+
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
+      with:
+        submodules: recursive
 
     - run: rustup toolchain install $(cat rust-toolchain) --profile minimal
 
@@ -207,7 +327,16 @@ jobs:
       run: choco install nasm
       shell: cmd
 
-    - uses: actions/setup-node@v3
+    - run: sudo apt-get update && sudo apt-get install protobuf-compiler
+      if: matrix.os == 'ubuntu-latest'
+
+    - run: choco install protoc
+      if: matrix.os == 'windows-latest'
+
+    - run: brew install protobuf
+      if: matrix.os == 'macos-latest'
+
+    - uses: actions/setup-node@60edb5dd545a775178f52524783378180af0d1f8 # v4.0.2
       with:
         node-version-file: '.nvmrc'
 
@@ -216,6 +345,9 @@ jobs:
       if: matrix.os == 'ubuntu-latest'
 
     - run: yarn install --frozen-lockfile
+      working-directory: node
+
+    - run: yarn node-gyp rebuild
       working-directory: node
 
     - run: yarn tsc
@@ -241,10 +373,18 @@ jobs:
 
     if: ${{ needs.changes.outputs.swift == 'true' }}
 
+    timeout-minutes: 45
+
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
+      with:
+        submodules: recursive
 
     - run: rustup toolchain install $(cat rust-toolchain) --profile minimal
+
+    - run: sudo apt-get update && sudo apt-get install protobuf-compiler
+
+    - run: swift/verify_error_codes.sh
 
     - name: Build libsignal-ffi
       run: swift/build_ffi.sh -d -v --verify-ffi
@@ -253,27 +393,39 @@ jobs:
       run: swift test -v
       working-directory: swift
 
+    - name: Build and run Swift benchmarks (in debug mode)
+      run: swift run -v Benchmarks --allow-debug-build
+      working-directory: swift/Benchmarks
+
+    - name: Build Swift package documentation
+      run: swift package plugin generate-documentation --analyze --warnings-as-errors
+      working-directory: swift
+
   swift_cocoapod:
     name: Swift CocoaPod
 
-    runs-on: macOS-latest
+    runs-on: macos-latest
 
     needs: changes
 
     if: ${{ needs.changes.outputs.swift == 'true' }}
 
+    timeout-minutes: 45
+
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
+        with:
+          submodules: recursive
+
+      - run: brew install protobuf swiftlint
+
+      - name: Check formatting
+        run: swiftformat --swiftversion 5 --reporter github-actions-log --lint .
+        working-directory: swift
 
       - name: Run lint
         run: swiftlint lint --strict --reporter github-actions-logging
         working-directory: swift
-
-      - name: Check out SignalCoreKit
-        uses: actions/checkout@v3
-        with:
-          repository: signalapp/SignalCoreKit
-          path: SignalCoreKit
 
       - run: rustup toolchain install $(cat rust-toolchain) --profile minimal --target x86_64-apple-ios,aarch64-apple-ios-sim
 
@@ -289,7 +441,4 @@ jobs:
           CARGO_BUILD_TARGET: aarch64-apple-ios-sim
 
       - name: Run pod lint
-        # No import validation because it tries to build unsupported platforms (like 32-bit iOS).
-        run: pod lib lint --verbose --platforms=ios --include-podspecs=SignalCoreKit/SignalCoreKit.podspec --skip-import-validation
-        env:
-          SKIP_CATALYST: 1
+        run: pod lib lint --verbose --platforms=ios

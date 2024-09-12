@@ -1,8 +1,8 @@
-/**
- * Copyright (C) 2014-2016 Open Whisper Systems
- *
- * Licensed according to the LICENSE file in this repository.
- */
+//
+// Copyright 2014-2016 Signal Messenger, LLC.
+// SPDX-License-Identifier: AGPL-3.0-only
+//
+
 package org.signal.libsignal.protocol;
 
 import org.signal.libsignal.internal.Native;
@@ -15,11 +15,16 @@ public class SignalProtocolAddress implements NativeHandleGuard.Owner {
     this.unsafeHandle = Native.ProtocolAddress_New(name, deviceId);
   }
 
+  public SignalProtocolAddress(ServiceId serviceId, int deviceId) {
+    this(serviceId.toServiceIdString(), deviceId);
+  }
+
   public SignalProtocolAddress(long unsafeHandle) {
     this.unsafeHandle = unsafeHandle;
   }
 
-  @Override @SuppressWarnings("deprecation")
+  @Override
+  @SuppressWarnings("deprecation")
   protected void finalize() {
     Native.ProtocolAddress_Destroy(this.unsafeHandle);
   }
@@ -27,6 +32,19 @@ public class SignalProtocolAddress implements NativeHandleGuard.Owner {
   public String getName() {
     try (NativeHandleGuard guard = new NativeHandleGuard(this)) {
       return Native.ProtocolAddress_Name(guard.nativeHandle());
+    }
+  }
+
+  /**
+   * Returns a ServiceId if this address contains a valid ServiceId, {@code null} otherwise.
+   *
+   * <p>In a future release SignalProtocolAddresses will <em>only</em> support ServiceIds.
+   */
+  public ServiceId getServiceId() {
+    try {
+      return ServiceId.parseFromString(getName());
+    } catch (ServiceId.InvalidServiceIdException e) {
+      return null;
     }
   }
 
@@ -43,10 +61,10 @@ public class SignalProtocolAddress implements NativeHandleGuard.Owner {
 
   @Override
   public boolean equals(Object other) {
-    if (other == null)                       return false;
+    if (other == null) return false;
     if (!(other instanceof SignalProtocolAddress)) return false;
 
-    SignalProtocolAddress that = (SignalProtocolAddress)other;
+    SignalProtocolAddress that = (SignalProtocolAddress) other;
     return this.getName().equals(that.getName()) && this.getDeviceId() == that.getDeviceId();
   }
 

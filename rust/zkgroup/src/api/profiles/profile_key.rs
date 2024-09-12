@@ -3,16 +3,33 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 
+use partial_default::PartialDefault;
+use serde::{Deserialize, Serialize};
+use signal_crypto::Aes256GcmEncryption;
+use subtle::ConstantTimeEq;
+
 use crate::common::constants::*;
 use crate::common::sho::*;
 use crate::common::simple_types::*;
 use crate::{api, crypto};
-use serde::{Deserialize, Serialize};
-use signal_crypto::Aes256GcmEncryption;
 
-#[derive(Copy, Clone, Serialize, Deserialize)]
+#[derive(Copy, Clone, Serialize, Deserialize, PartialDefault)]
 pub struct ProfileKey {
     pub bytes: ProfileKeyBytes,
+}
+
+impl std::fmt::Debug for ProfileKey {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ProfileKey")
+            .field("bytes", &zkcredential::PrintAsHex(self.bytes.as_slice()))
+            .finish()
+    }
+}
+
+impl PartialEq for ProfileKey {
+    fn eq(&self, other: &Self) -> bool {
+        self.bytes.as_slice().ct_eq(other.bytes.as_slice()).into()
+    }
 }
 
 impl ProfileKey {
@@ -34,7 +51,11 @@ impl ProfileKey {
         self.bytes
     }
 
-    pub fn get_commitment(&self, uid_bytes: UidBytes) -> api::profiles::ProfileKeyCommitment {
+    pub fn get_commitment(
+        &self,
+        user_id: libsignal_core::Aci,
+    ) -> api::profiles::ProfileKeyCommitment {
+        let uid_bytes = uuid::Uuid::from(user_id).into_bytes();
         let profile_key = crypto::profile_key_struct::ProfileKeyStruct::new(self.bytes, uid_bytes);
         let commitment =
             crypto::profile_key_commitment::CommitmentWithSecretNonce::new(profile_key, uid_bytes);
@@ -44,7 +65,11 @@ impl ProfileKey {
         }
     }
 
-    pub fn get_profile_key_version(&self, uid_bytes: UidBytes) -> api::profiles::ProfileKeyVersion {
+    pub fn get_profile_key_version(
+        &self,
+        user_id: libsignal_core::Aci,
+    ) -> api::profiles::ProfileKeyVersion {
+        let uid_bytes = uuid::Uuid::from(user_id).into_bytes();
         let mut combined_array = [0u8; PROFILE_KEY_LEN + UUID_LEN];
         combined_array[..PROFILE_KEY_LEN].copy_from_slice(&self.bytes);
         combined_array[PROFILE_KEY_LEN..].copy_from_slice(&uid_bytes);
@@ -66,7 +91,7 @@ impl ProfileKey {
         let nonce = &[0u8; AESGCM_NONCE_LEN];
         let mut cipher = Aes256GcmEncryption::new(&self.bytes, nonce, &[]).unwrap();
         let mut buf = [0u8; ACCESS_KEY_LEN];
-        cipher.encrypt(&mut buf[..]).unwrap();
+        cipher.encrypt(&mut buf[..]);
         buf
     }
 }

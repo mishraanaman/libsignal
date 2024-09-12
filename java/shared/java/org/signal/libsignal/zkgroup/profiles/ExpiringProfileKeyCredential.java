@@ -5,19 +5,23 @@
 
 package org.signal.libsignal.zkgroup.profiles;
 
-import org.signal.libsignal.zkgroup.InvalidInputException;
-import org.signal.libsignal.zkgroup.internal.ByteArray;
-import org.signal.libsignal.internal.Native;
+import static org.signal.libsignal.internal.FilterExceptions.filterExceptions;
 
 import java.time.Instant;
+import org.signal.libsignal.internal.Native;
+import org.signal.libsignal.zkgroup.InvalidInputException;
+import org.signal.libsignal.zkgroup.internal.ByteArray;
 
 public final class ExpiringProfileKeyCredential extends ByteArray {
   public ExpiringProfileKeyCredential(byte[] contents) throws InvalidInputException {
     super(contents);
-    Native.ExpiringProfileKeyCredential_CheckValidContents(contents);
+    filterExceptions(
+        InvalidInputException.class,
+        () -> Native.ExpiringProfileKeyCredential_CheckValidContents(contents));
   }
-  
+
   public Instant getExpirationTime() {
-    return Instant.ofEpochSecond(Native.ExpiringProfileKeyCredential_GetExpirationTime(this.contents));
+    return Instant.ofEpochSecond(
+        Native.ExpiringProfileKeyCredential_GetExpirationTime(this.contents));
   }
 }

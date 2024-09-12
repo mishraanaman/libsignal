@@ -10,15 +10,16 @@ name = "signal-neon-futures-tests"
 version = "0.1.0"
 authors = ["Signal Messenger LLC"]
 license = "AGPL-3.0-only"
-edition = "2018"
+edition = "2021"
 
 [lib]
 crate-type = ["cdylib"]
 
 [dependencies]
 signal-neon-futures = { path = ".." }
-neon = { version = "0.10.0", default-features = false, features = ["napi-1"] }
-futures-util = "0.3.7"
+
+futures-util = { workspace = true }
+neon = { workspace = true, default-features = false, features = ["napi-1"] }
 
 [features]
 # Enable default-panic-hook to get backtraces of panics.

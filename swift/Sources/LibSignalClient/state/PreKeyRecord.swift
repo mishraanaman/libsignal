@@ -3,15 +3,15 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 
-import SignalFfi
 import Foundation
+import SignalFfi
 
 public class PreKeyRecord: ClonableHandleOwner {
-    internal override class func destroyNativeHandle(_ handle: OpaquePointer) -> SignalFfiErrorRef? {
+    override internal class func destroyNativeHandle(_ handle: OpaquePointer) -> SignalFfiErrorRef? {
         return signal_pre_key_record_destroy(handle)
     }
 
-    internal override class func cloneNativeHandle(_ newHandle: inout OpaquePointer?, currentHandle: OpaquePointer?) -> SignalFfiErrorRef? {
+    override internal class func cloneNativeHandle(_ newHandle: inout OpaquePointer?, currentHandle: OpaquePointer?) -> SignalFfiErrorRef? {
         return signal_pre_key_record_clone(&newHandle, currentHandle)
     }
 
@@ -24,9 +24,11 @@ public class PreKeyRecord: ClonableHandleOwner {
         self.init(owned: handle!)
     }
 
-    public convenience init(id: UInt32,
-                            publicKey: PublicKey,
-                            privateKey: PrivateKey) throws {
+    public convenience init(
+        id: UInt32,
+        publicKey: PublicKey,
+        privateKey: PrivateKey
+    ) throws {
         var handle: OpaquePointer?
         try withNativeHandles(publicKey, privateKey) { publicKeyHandle, privateKeyHandle in
             try checkError(signal_pre_key_record_new(&handle, id, publicKeyHandle, privateKeyHandle))
@@ -58,22 +60,18 @@ public class PreKeyRecord: ClonableHandleOwner {
         }
     }
 
-    public var publicKey: PublicKey {
-        return withNativeHandle { nativeHandle in
-            failOnError {
-                try invokeFnReturningNativeHandle {
-                    signal_pre_key_record_get_public_key($0, nativeHandle)
-                }
+    public func publicKey() throws -> PublicKey {
+        return try withNativeHandle { nativeHandle in
+            try invokeFnReturningNativeHandle {
+                signal_pre_key_record_get_public_key($0, nativeHandle)
             }
         }
     }
 
-    public var privateKey: PrivateKey {
-        return withNativeHandle { nativeHandle in
-            failOnError {
-                try invokeFnReturningNativeHandle {
-                    signal_pre_key_record_get_private_key($0, nativeHandle)
-                }
+    public func privateKey() throws -> PrivateKey {
+        return try withNativeHandle { nativeHandle in
+            try invokeFnReturningNativeHandle {
+                signal_pre_key_record_get_private_key($0, nativeHandle)
             }
         }
     }

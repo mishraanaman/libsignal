@@ -7,40 +7,61 @@
 name = "libsignal-protocol"
 version = "0.1.0"
 authors = ["Signal Messenger LLC"]
-edition = "2018"
+edition = "2021"
 license = "AGPL-3.0-only"
 
 [dependencies]
-aes = { version = "0.7.4", features = ["ctr"] }
-aes-gcm-siv = "0.10.1"
+libsignal-core = { path = "../core" }
+signal-crypto = { path = "../crypto" }
+
+aes = { workspace = true, features = ["zeroize"] }
+aes-gcm-siv = { workspace = true }
 arrayref = "0.3.6"
-async-trait = "0.1.41"
-block-modes = "0.8"
-curve25519-dalek = "3.0"
-hkdf = "0.11"
-hmac = "0.11.0"
-itertools = "0.10.1"
-prost = "0.9"
-rand = "0.7.3"
-sha2 = "0.9"
-subtle = "2.2.3"
-x25519-dalek = "1.0"
-hex = "0.4"
-log = "0.4"
-num_enum = "0.5.1"
-uuid = "1.1.2"
-displaydoc = "0.2"
-thiserror = "1.0.30"
+async-trait = { workspace = true }
+ctr = { workspace = true, features = ["zeroize"] }
+curve25519-dalek = { workspace = true, features = ["digest"] }
+derive-where = { workspace = true }
+displaydoc = { workspace = true }
+hex = { workspace = true }
+hkdf = { workspace = true }
+hmac = { workspace = true }
+indexmap = { workspace = true }
+itertools = { workspace = true }
+log = { workspace = true }
+num_enum = { workspace = true }
+pqcrypto-kyber = { version = "0.7.6", default-features = false, features = ["std"] }
+pqcrypto-traits = "0.3.4"
+prost = { workspace = true }
+rand = { workspace = true }
+rayon = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+sha2 = { workspace = true }
+subtle = { workspace = true }
+thiserror = { workspace = true }
+uuid = { workspace = true }
+x25519-dalek = { workspace = true, features = ["static_secrets"] }
+
+# WARNING: pqcrypto-kyber 0.8 and 0.7 don't actually coexist, they both depend on the same C symbols.
+# We keep this here for if/when that gets cleared up.
+pqcrypto-ml-kem = { version = "0.8.0", default-features = false, features = ["std"], package = "pqcrypto-kyber", optional = true }
 
 [features]
-armv8 = ["aes/armv8", "aes-gcm-siv/armv8"]
+kyber768 = []
+# ML-KEM matches the NIST standard version of Kyber. It may still change
+# incompatibly until the final version of the standard is published and
+# libsignal will update to match.
+mlkem1024 = ["pqcrypto-ml-kem"]
 
 [dev-dependencies]
-criterion = "0.4"
-futures-util = "0.3.7"
+clap = { workspace = true, features = ["derive"] }
+criterion = { workspace = true }
+hex-literal = { workspace = true }
+proptest = { workspace = true }
+futures-util = { workspace = true }
+env_logger = { workspace = true }
 
 [build-dependencies]
-prost-build = "0.9"
+prost-build = { workspace = true }
 
 [[bench]]
 name = "curve"
@@ -57,3 +78,8 @@ harness = false
 [[bench]]
 name = "sealed_sender"
 harness = false
+
+[[bench]]
+name = "kem"
+harness = false
+required-features = ["kyber768"]

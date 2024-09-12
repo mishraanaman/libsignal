@@ -1,23 +1,22 @@
-
 [package]
 name = "libsignal-protocol-fuzz"
 version = "0.0.0"
 authors = ["Automatically generated"]
 publish = false
-edition = "2018"
+edition = "2021"
 
 [package.metadata]
 cargo-fuzz = true
 
 [dependencies]
-env_logger = { version = "0.8.1" }
+libsignal-protocol = { path = ".." }
+
+env_logger = "0.11.4"
 futures-util = "0.3.7"
 libfuzzer-sys = "0.4"
 log = "0.4"
-rand = "0.7.3"
+rand = "0.8"
 
-[dependencies.libsignal-protocol]
-path = ".."
 
 # Prevent this from interfering with workspaces
 [workspace]
@@ -28,3 +27,13 @@ name = "interaction"
 path = "fuzz_targets/interaction.rs"
 test = false
 doc = false
+
+[[bin]]
+name = "sealed_sender_v2"
+path = "fuzz_targets/sealed_sender_v2.rs"
+test = false
+doc = false
+
+[patch.crates-io]
+# Use our fork of curve25519-dalek for zkgroup support.
+curve25519-dalek = { git = 'https://github.com/signalapp/curve25519-dalek', tag = 'signal-curve25519-4.0.0' }

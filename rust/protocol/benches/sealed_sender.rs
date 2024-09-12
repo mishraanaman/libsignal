@@ -3,6 +3,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 
+use std::time::SystemTime;
+
 use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
 use futures_util::FutureExt;
 use libsignal_protocol::*;
@@ -34,8 +36,8 @@ pub fn v1(c: &mut Criterion) {
         &mut alice_store.session_store,
         &mut alice_store.identity_store,
         &bob_pre_key_bundle,
+        SystemTime::now(),
         &mut rng,
-        None,
     )
     .now_or_never()
     .expect("sync")
@@ -48,13 +50,13 @@ pub fn v1(c: &mut Criterion) {
         ServerCertificate::new(1, server_key.public_key, &trust_root.private_key, &mut rng)
             .expect("valid");
 
-    let expires = 1605722925;
+    let expires = Timestamp::from_epoch_millis(1605722925);
 
     let sender_cert = SenderCertificate::new(
         alice_address.name().to_string(),
         None,
         *alice_store
-            .get_identity_key_pair(None)
+            .get_identity_key_pair()
             .now_or_never()
             .expect("sync")
             .expect("valid")
@@ -78,21 +80,15 @@ pub fn v1(c: &mut Criterion) {
     .expect("valid");
 
     let mut encrypt_it = || {
-        sealed_sender_encrypt_from_usmc(
-            &bob_address,
-            &usmc,
-            &mut alice_store.identity_store,
-            None,
-            &mut rng,
-        )
-        .now_or_never()
-        .expect("sync")
-        .expect("valid")
+        sealed_sender_encrypt_from_usmc(&bob_address, &usmc, &alice_store.identity_store, &mut rng)
+            .now_or_never()
+            .expect("sync")
+            .expect("valid")
     };
     let encrypted = encrypt_it();
 
     let mut decrypt_it = || {
-        sealed_sender_decrypt_to_usmc(&encrypted, &mut bob_store.identity_store, None)
+        sealed_sender_decrypt_to_usmc(&encrypted, &bob_store.identity_store)
             .now_or_never()
             .expect("sync")
             .expect("valid")
@@ -124,8 +120,8 @@ pub fn v2(c: &mut Criterion) {
         &mut alice_store.session_store,
         &mut alice_store.identity_store,
         &bob_pre_key_bundle,
+        SystemTime::now(),
         &mut rng,
-        None,
     )
     .now_or_never()
     .expect("sync")
@@ -138,13 +134,13 @@ pub fn v2(c: &mut Criterion) {
         ServerCertificate::new(1, server_key.public_key, &trust_root.private_key, &mut rng)
             .expect("valid");
 
-    let expires = 1605722925;
+    let expires = Timestamp::from_epoch_millis(1605722925);
 
     let sender_cert = SenderCertificate::new(
         alice_address.name().to_string(),
         None,
         *alice_store
-            .get_identity_key_pair(None)
+            .get_identity_key_pair()
             .now_or_never()
             .expect("sync")
             .expect("valid")
@@ -174,9 +170,9 @@ pub fn v2(c: &mut Criterion) {
                 .session_store
                 .load_existing_sessions(&[&bob_address])
                 .expect("present"),
+            [],
             &usmc,
-            &mut alice_store.identity_store,
-            None,
+            &alice_store.identity_store,
             &mut rng,
         )
         .now_or_never()
@@ -185,14 +181,12 @@ pub fn v2(c: &mut Criterion) {
     };
     let outgoing = encrypt_it();
 
-    let incoming = sealed_sender_multi_recipient_fan_out(&outgoing)
-        .expect("valid")
-        .into_iter()
-        .next()
-        .expect("at least one destination");
+    let (incoming_recipient, incoming_message) =
+        support::extract_single_ssv2_received_message(&outgoing);
+    assert_eq!(&incoming_recipient.service_id_string(), bob_address.name());
 
     let mut decrypt_it = || {
-        sealed_sender_decrypt_to_usmc(&incoming, &mut bob_store.identity_store, None)
+        sealed_sender_decrypt_to_usmc(&incoming_message, &bob_store.identity_store)
             .now_or_never()
             .expect("sync")
             .expect("valid")
@@ -204,7 +198,7 @@ pub fn v2(c: &mut Criterion) {
 
     // Fill out additional recipients.
     let mut recipients = vec![bob_address.clone()];
-    while recipients.len() < 10 {
+    while recipients.len() < 1000 {
         let next_address = ProtocolAddress::new(Uuid::from_bytes(rng.gen()).to_string(), 1.into());
 
         let mut next_store = support::test_in_memory_protocol_store().expect("brand new store");
@@ -219,8 +213,8 @@ pub fn v2(c: &mut Criterion) {
             &mut alice_store.session_store,
             &mut alice_store.identity_store,
             &next_pre_key_bundle,
+            SystemTime::now(),
             &mut rng,
-            None,
         )
         .now_or_never()
         .expect("sync")
@@ -230,7 +224,7 @@ pub fn v2(c: &mut Criterion) {
     }
 
     let mut group = c.benchmark_group("v2/encrypt/multi-recipient");
-    for recipient_count in [2, 5, 10] {
+    for recipient_count in [2, 5, 10, 100, 1000] {
         group.bench_with_input(
             BenchmarkId::from_parameter(recipient_count),
             &recipient_count,
@@ -243,9 +237,9 @@ pub fn v2(c: &mut Criterion) {
                             .session_store
                             .load_existing_sessions(&recipients)
                             .expect("present"),
+                        [],
                         &usmc,
-                        &mut alice_store.identity_store,
-                        None,
+                        &alice_store.identity_store,
                         &mut rng,
                     )
                     .now_or_never()
@@ -271,9 +265,9 @@ pub fn v2(c: &mut Criterion) {
                             .session_store
                             .load_existing_sessions(&recipients)
                             .expect("present"),
+                        [],
                         &usmc,
-                        &mut alice_store.identity_store,
-                        None,
+                        &alice_store.identity_store,
                         &mut rng,
                     )
                     .now_or_never()

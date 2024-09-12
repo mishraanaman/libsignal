@@ -7,27 +7,28 @@
 name = "signal-crypto"
 version = "0.1.0"
 authors = ["Signal Messenger LLC"]
-edition = "2018"
+edition = "2021"
 license = "AGPL-3.0-only"
 
 [dependencies]
-aes = { version = "0.7.4", features = ["ctr"] }
-subtle = "2.3"
-generic-array = "0.14"
-ghash = "0.4.2"
-hmac = "0.11"
-sha-1 = "0.9"
-sha2 = "0.9"
+aes = { workspace = true, features = ["zeroize"] }
+cbc = { workspace = true, features = ["std", "zeroize"] }
+ctr = { workspace = true, features = ["zeroize"] }
+displaydoc = { workspace = true }
+ghash = { version = "0.5.0", features = ["zeroize"] }
+hmac = { workspace = true, features = ["reset"] }
+sha1 = { workspace = true }
+sha2 = { workspace = true }
+subtle = { workspace = true }
+thiserror = { workspace = true }
 
 [dev-dependencies]
-rand = "0.7.3"
-serde = { version = "1.0", features = ["derive"] }
+criterion = { workspace = true }
+hex = { workspace = true }
+hex-literal = { workspace = true }
+rand = { workspace = true }
+serde = { workspace = true }
 serde_json = "1.0"
-hex = "0.4"
-criterion = "0.4"
-
-[features]
-armv8 = ["aes/armv8", "ghash/armv8"]
 
 [[bench]]
 name = "aes_gcm"

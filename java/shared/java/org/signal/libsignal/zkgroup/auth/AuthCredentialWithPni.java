@@ -5,13 +5,17 @@
 
 package org.signal.libsignal.zkgroup.auth;
 
+import static org.signal.libsignal.internal.FilterExceptions.filterExceptions;
+
+import org.signal.libsignal.internal.Native;
 import org.signal.libsignal.zkgroup.InvalidInputException;
 import org.signal.libsignal.zkgroup.internal.ByteArray;
-import org.signal.libsignal.internal.Native;
 
 public final class AuthCredentialWithPni extends ByteArray {
   public AuthCredentialWithPni(byte[] contents) throws InvalidInputException {
     super(contents);
-    Native.AuthCredentialWithPni_CheckValidContents(contents);
+    filterExceptions(
+        InvalidInputException.class,
+        () -> Native.AuthCredentialWithPni_CheckValidContents(contents));
   }
 }

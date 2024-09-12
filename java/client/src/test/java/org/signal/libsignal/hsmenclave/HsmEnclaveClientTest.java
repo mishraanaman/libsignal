@@ -5,17 +5,24 @@
 
 package org.signal.libsignal.hsmenclave;
 
-import junit.framework.TestCase;
-
 import java.util.ArrayList;
 import java.util.List;
+import junit.framework.TestCase;
 
 public class HsmEnclaveClientTest extends TestCase {
   public void testCreateClient() throws Exception {
     byte[] validKey = new byte[32];
     List<byte[]> hashes = new ArrayList<>();
-    hashes.add(new byte[]{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0});
-    hashes.add(new byte[]{1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1});
+    hashes.add(
+        new byte[] {
+          0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+          0, 0
+        });
+    hashes.add(
+        new byte[] {
+          1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+          1, 1
+        });
     HsmEnclaveClient hsmEnclaveClient = new HsmEnclaveClient(validKey, hashes);
     byte[] initialMessage = hsmEnclaveClient.initialRequest();
     assertEquals(112, initialMessage.length);
@@ -24,8 +31,16 @@ public class HsmEnclaveClientTest extends TestCase {
   public void testCreateClientFailsWithInvalidPublicKey() {
     byte[] invalidKey = new byte[31];
     List<byte[]> hashes = new ArrayList<>();
-    hashes.add(new byte[]{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0});
-    hashes.add(new byte[]{1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1});
+    hashes.add(
+        new byte[] {
+          0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+          0, 0
+        });
+    hashes.add(
+        new byte[] {
+          1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+          1, 1
+        });
     try {
       new HsmEnclaveClient(invalidKey, hashes);
     } catch (IllegalArgumentException e) {
@@ -37,8 +52,15 @@ public class HsmEnclaveClientTest extends TestCase {
   public void testCreateClientFailsWithInvalidHash() {
     byte[] validKey = new byte[32];
     List<byte[]> hashes = new ArrayList<>();
-    hashes.add(new byte[]{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0});
-    hashes.add(new byte[]{1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0});
+    hashes.add(
+        new byte[] {
+          0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+        });
+    hashes.add(
+        new byte[] {
+          1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+          1, 1, 0, 0, 0, 0
+        });
     try {
       new HsmEnclaveClient(validKey, hashes);
     } catch (IllegalArgumentException e) {
@@ -58,26 +80,34 @@ public class HsmEnclaveClientTest extends TestCase {
     fail();
   }
 
-  public void testEstablishedSendFailsPriorToEstablishment() {
+  public void testEstablishedSendFailsPriorToEstablishment() throws Exception {
     byte[] validKey = new byte[32];
     List<byte[]> hashes = new ArrayList<>();
-    hashes.add(new byte[]{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0});
+    hashes.add(
+        new byte[] {
+          0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+          0, 0
+        });
     HsmEnclaveClient hsmEnclaveClient = new HsmEnclaveClient(validKey, hashes);
     try {
-      hsmEnclaveClient.establishedSend(new byte[]{1, 2, 3});
+      hsmEnclaveClient.establishedSend(new byte[] {1, 2, 3});
     } catch (IllegalStateException e) {
       return;
     }
     fail();
   }
 
-  public void testEstablishedRecvFailsPriorToEstablishment() {
+  public void testEstablishedRecvFailsPriorToEstablishment() throws Exception {
     byte[] validKey = new byte[32];
     List<byte[]> hashes = new ArrayList<>();
-    hashes.add(new byte[]{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0});
+    hashes.add(
+        new byte[] {
+          0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+          0, 0
+        });
     HsmEnclaveClient hsmEnclaveClient = new HsmEnclaveClient(validKey, hashes);
     try {
-      hsmEnclaveClient.establishedRecv(new byte[]{1, 2, 3});
+      hsmEnclaveClient.establishedRecv(new byte[] {1, 2, 3});
     } catch (IllegalStateException e) {
       return;
     }

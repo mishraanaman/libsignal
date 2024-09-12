@@ -3,11 +3,11 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 
-use crate::{Error, Result};
-
-use hmac::{Hmac, Mac, NewMac};
+use hmac::{Hmac, Mac};
 use sha1::Sha1;
 use sha2::{Digest, Sha256, Sha512};
+
+use crate::{Error, Result};
 
 #[derive(Clone)]
 pub enum CryptographicMac {
@@ -28,19 +28,23 @@ impl CryptographicMac {
         }
     }
 
-    pub fn update(&mut self, input: &[u8]) -> Result<()> {
+    pub fn update(&mut self, input: &[u8]) {
         match self {
             Self::HmacSha1(sha1) => sha1.update(input),
             Self::HmacSha256(sha256) => sha256.update(input),
         }
-        Ok(())
     }
 
-    pub fn finalize(&mut self) -> Result<Vec<u8>> {
-        Ok(match self {
+    pub fn update_and_get(&mut self, input: &[u8]) -> &mut Self {
+        self.update(input);
+        self
+    }
+
+    pub fn finalize(&mut self) -> Vec<u8> {
+        match self {
             Self::HmacSha1(sha1) => sha1.finalize_reset().into_bytes().to_vec(),
             Self::HmacSha256(sha256) => sha256.finalize_reset().into_bytes().to_vec(),
-        })
+        }
     }
 }
 
@@ -61,20 +65,19 @@ impl CryptographicHash {
         }
     }
 
-    pub fn update(&mut self, input: &[u8]) -> Result<()> {
+    pub fn update(&mut self, input: &[u8]) {
         match self {
             Self::Sha1(sha1) => sha1.update(input),
             Self::Sha256(sha256) => sha256.update(input),
             Self::Sha512(sha512) => sha512.update(input),
         }
-        Ok(())
     }
 
-    pub fn finalize(&mut self) -> Result<Vec<u8>> {
-        Ok(match self {
+    pub fn finalize(&mut self) -> Vec<u8> {
+        match self {
             Self::Sha1(sha1) => sha1.finalize_reset().to_vec(),
             Self::Sha256(sha256) => sha256.finalize_reset().to_vec(),
             Self::Sha512(sha512) => sha512.finalize_reset().to_vec(),
-        })
+        }
     }
 }

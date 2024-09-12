@@ -1,10 +1,11 @@
-/**
- * Copyright (C) 2014-2016 Open Whisper Systems
- *
- * Licensed according to the LICENSE file in this repository.
- */
+//
+// Copyright 2014-2016 Signal Messenger, LLC.
+// SPDX-License-Identifier: AGPL-3.0-only
+//
+
 package org.signal.libsignal.protocol.state;
 
+import org.signal.libsignal.internal.CalledFromNative;
 import org.signal.libsignal.protocol.InvalidKeyIdException;
 
 /**
@@ -12,6 +13,7 @@ import org.signal.libsignal.protocol.InvalidKeyIdException;
  *
  * @author Moxie Marlinspike
  */
+@CalledFromNative
 public interface PreKeyStore {
 
   /**
@@ -29,19 +31,18 @@ public interface PreKeyStore {
    * @param preKeyId the ID of the PreKeyRecord to store.
    * @param record the PreKeyRecord.
    */
-  public void         storePreKey(int preKeyId, PreKeyRecord record);
+  public void storePreKey(int preKeyId, PreKeyRecord record);
 
   /**
    * @param preKeyId A PreKeyRecord ID.
    * @return true if the store has a record for the preKeyId, otherwise false.
    */
-  public boolean      containsPreKey(int preKeyId);
+  public boolean containsPreKey(int preKeyId);
 
   /**
    * Delete a PreKeyRecord from local storage.
    *
    * @param preKeyId The ID of the PreKeyRecord to remove.
    */
-  public void         removePreKey(int preKeyId);
-
+  public void removePreKey(int preKeyId);
 }

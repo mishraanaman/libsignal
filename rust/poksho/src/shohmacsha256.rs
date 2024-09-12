@@ -3,9 +3,10 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 
-use hmac::{Hmac, Mac, NewMac};
-use sha2::Sha256;
 use std::cmp;
+
+use hmac::{Hmac, Mac};
+use sha2::Sha256;
 
 use crate::shoapi::ShoApi;
 
@@ -87,7 +88,6 @@ impl ShoApi for ShoHmacSha256 {
 
 #[cfg(test)]
 mod tests {
-
     use super::*;
 
     #[test]

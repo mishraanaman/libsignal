@@ -5,6 +5,8 @@
 
 package org.signal.libsignal.crypto;
 
+import static org.signal.libsignal.internal.FilterExceptions.filterExceptions;
+
 import org.signal.libsignal.internal.Native;
 import org.signal.libsignal.internal.NativeHandleGuard;
 
@@ -12,14 +14,15 @@ public class CryptographicHash implements NativeHandleGuard.Owner {
   private final long unsafeHandle;
 
   public CryptographicHash(String algo) {
-    this.unsafeHandle = Native.CryptographicHash_New(algo);
+    this.unsafeHandle = filterExceptions(() -> Native.CryptographicHash_New(algo));
   }
 
   public long unsafeNativeHandleWithoutGuard() {
     return unsafeHandle;
   }
 
-  @Override @SuppressWarnings("deprecation")
+  @Override
+  @SuppressWarnings("deprecation")
   protected void finalize() {
     Native.CryptographicHash_Destroy(this.unsafeHandle);
   }
@@ -41,5 +44,4 @@ public class CryptographicHash implements NativeHandleGuard.Owner {
       return Native.CryptographicHash_Finalize(guard.nativeHandle());
     }
   }
-
 }

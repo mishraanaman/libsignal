@@ -1,0 +1,67 @@
+#
+# Copyright (C) 2024 Signal Messenger, LLC.
+# SPDX-License-Identifier: AGPL-3.0-only
+#
+
+[package]
+name = "libsignal-bridge-types"
+version = "0.1.0"
+authors = ["Signal Messenger LLC"]
+edition = "2021"
+license = "AGPL-3.0-only"
+
+[dependencies]
+attest = { path = "../../../attest" }
+device-transfer = { path = "../../../device-transfer" }
+libsignal-core = { path = "../../../core" }
+libsignal-message-backup = { path = "../../../message-backup" }
+libsignal-net = { path = "../../../net" }
+libsignal-protocol = { path = "../../../protocol" }
+libsignal-svr3 = { path = "../../../svr3" }
+signal-crypto = { path = "../../../crypto" }
+signal-media = { path = "../../../media", optional = true }
+signal-pin = { path = "../../../pin" }
+usernames = { path = "../../../usernames" }
+zkgroup = { path = "../../../zkgroup" }
+
+aes-gcm-siv = { workspace = true }
+async-trait = { workspace = true }
+atomic-take = { workspace = true }
+derive-where = { workspace = true }
+displaydoc = { workspace = true }
+futures-util = { workspace = true }
+hmac = { workspace = true }
+http = { workspace = true }
+log = { workspace = true }
+mediasan-common = { workspace = true }
+num_enum = { workspace = true }
+once_cell = { workspace = true }
+partial-default = { workspace = true }
+paste = { workspace = true }
+rayon = { workspace = true }
+serde = { workspace = true }
+sha2 = { workspace = true }
+static_assertions = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true, features = ["rt-multi-thread"] }
+uuid = { workspace = true }
+
+# Enable this for all libsignal app language libraries
+subtle = { workspace = true, features = ["core_hint_black_box"] }
+
+jni = { workspace = true, optional = true }
+linkme = { workspace = true, optional = true }
+neon = { workspace = true, optional = true, default-features = false, features = ["napi-6"] }
+signal-neon-futures = { path = "../../node/futures", optional = true }
+strum = { workspace = true }
+zerocopy = { workspace = true, optional = true }
+
+[dev-dependencies]
+assert_matches = { workspace = true }
+test-case = { workspace = true }
+tokio = { workspace = true, features = ["test-util", "time", "macros"] }
+
+[features]
+ffi = []
+jni = ["dep:jni", "zerocopy"]
+node = ["neon", "linkme", "signal-neon-futures"]

@@ -4,10 +4,8 @@ plugins {
     id 'signing'
 }
 
-sourceCompatibility = 1.8
+sourceCompatibility = 17
 archivesBaseName = "libsignal-server"
-version          = version_number
-group            = group_info
 
 repositories {
     mavenCentral()
@@ -24,15 +22,21 @@ sourceSets {
             srcDir '../shared/resources'
         }
     }
+    test {
+        java {
+            srcDir '../shared/test/java'
+        }
+    }
 }
 
 dependencies {
-    testImplementation 'junit:junit:4.12'
+    testImplementation 'junit:junit:4.13'
 }
 
 test {
+    jvmArgs '-Xcheck:jni'
     testLogging {
-        events 'passed'
+        events 'passed','skipped','failed'
         showStandardStreams = true
         showExceptions true
         exceptionFormat 'full'
@@ -46,15 +50,15 @@ java {
     withJavadocJar()
 }
 
+sourcesJar {
+    // Cut down on artifact size by leaving these out of the sources jar.
+    exclude '*.dll'
+    exclude '*.dylib'
+    exclude '*.so'
+}
+
 processResources {
-    // TODO: Build a different variant of the JNI library for server.
-    dependsOn ':makeJniLibrariesDesktop'
-    dependsOn ':downloadNonLinuxLibraries'
-    gradle.taskGraph.whenReady { graph ->
-        if (graph.hasTask(":server:publish")) {
-            tasks.getByPath(":downloadNonLinuxLibraries").enabled = true
-        }
-    }
+    dependsOn ':makeJniLibrariesServer'
 }
 
 // MARK: Publishing
@@ -91,17 +95,9 @@ publishing {
             }
         }
     }
-    repositories {
-        maven {
-            url = getReleaseRepositoryUrl()
-            credentials {
-                username = getRepositoryUsername()
-                password = getRepositoryPassword()
-            }
-        }
-    }
 }
 
+setUpSigningKey(signing)
 signing {
     required { isReleaseBuild() && gradle.taskGraph.hasTask(":server:publish") }
     sign publishing.publications.mavenJava
